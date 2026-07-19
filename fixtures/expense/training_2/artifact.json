@@ -1,0 +1,317 @@
+{
+  "allowed_hosts": [
+    "127.0.0.1"
+  ],
+  "artifact_digest": "18c2ab7081b83f34b0e6e230e2be2e9676f137372235ec1f8619952ad3341d30",
+  "http_entries": [
+    {
+      "captured_at": 1720000000.0,
+      "method": "GET",
+      "ordinal": 0,
+      "request": {
+        "body": null,
+        "headers": {}
+      },
+      "response": {
+        "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>File an expense</title>\n    <style>\n      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; }\n      form { display: grid; gap: 0.75rem; }\n      input, button { font: inherit; padding: 0.6rem; }\n      .error { color: #a00; }\n    </style>\n  </head>\n  <body>\n    <main>\n      <h1>File an expense</h1>\n      \n<form method=\"post\" action=\"/expense\" enctype=\"multipart/form-data\">\n  <label for=\"merchant\">Merchant</label>\n  <input id=\"merchant\" name=\"merchant\" required>\n  <label for=\"amount\">Amount</label>\n  <input id=\"amount\" name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" required>\n  <label for=\"justification\">Justification for expenses over 1000</label>\n  <textarea id=\"justification\" name=\"justification\"></textarea>\n  <label for=\"receipt\">Receipt</label>\n  <input id=\"receipt\" name=\"receipt\" type=\"file\" accept=\"image/*,.pdf\" required>\n  <button type=\"submit\">Submit expense</button>\n</form>\n    </main>\n  </body>\n</html>",
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "status": 200
+      },
+      "source": "observed",
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "captured_at": 1720000000.0,
+      "method": "POST",
+      "ordinal": 1,
+      "request": {
+        "body": {
+          "fields": {
+            "amount": "1250.00",
+            "justification": "Client onsite travel required manager justification.",
+            "merchant": "Atlas Travel"
+          },
+          "files": [
+            {
+              "content_type": "application/pdf",
+              "field": "receipt",
+              "filename": "receipt.pdf",
+              "sha256": "29570944cb5c7efffc80a6c28a183fcf978d6336915a058a91780c10460dfcc1"
+            }
+          ],
+          "kind": "multipart"
+        },
+        "headers": {
+          "content-type": "multipart/form-data"
+        }
+      },
+      "response": {
+        "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>Expense submitted</title>\n    <style>\n      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; }\n      form { display: grid; gap: 0.75rem; }\n      input, button { font: inherit; padding: 0.6rem; }\n      .error { color: #a00; }\n    </style>\n  </head>\n  <body>\n    <main>\n      <h1>Expense submitted</h1>\n      <p>Expense ID: <strong>EXP-0001</strong></p>\n<dl>\n  <dt>Merchant</dt><dd>Atlas Travel</dd>\n  <dt>Amount</dt><dd>1250.00</dd>\n</dl>\n<a href=\"/expense\">File another expense</a>\n    </main>\n  </body>\n</html>",
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "status": 201
+      },
+      "source": "observed",
+      "url": "http://127.0.0.1/expense"
+    }
+  ],
+  "response_templates": [
+    {
+      "id": "b4fbec0771fdd8b69cbb50c5f38c169dfe62cd130aebd12f8d36581ef7f90a8e",
+      "request": {
+        "body": {
+          "fields": {
+            "amount": "1250.00",
+            "justification": "Client onsite travel required manager justification.",
+            "merchant": "Atlas Travel"
+          },
+          "files": [
+            {
+              "content_type": "application/pdf",
+              "field": "receipt",
+              "filename": "receipt.pdf",
+              "sha256": "29570944cb5c7efffc80a6c28a183fcf978d6336915a058a91780c10460dfcc1"
+            }
+          ],
+          "kind": "multipart"
+        },
+        "headers": {
+          "content-type": "multipart/form-data"
+        },
+        "method": "POST",
+        "url": "http://127.0.0.1/expense"
+      },
+      "response": {
+        "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>Expense submitted</title>\n    <style>\n      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; }\n      form { display: grid; gap: 0.75rem; }\n      input, button { font: inherit; padding: 0.6rem; }\n      .error { color: #a00; }\n    </style>\n  </head>\n  <body>\n    <main>\n      <h1>Expense submitted</h1>\n      <p>Expense ID: <strong>EXP-0001</strong></p>\n<dl>\n  <dt>Merchant</dt><dd>Atlas Travel</dd>\n  <dt>Amount</dt><dd>1250.00</dd>\n</dl>\n<a href=\"/expense\">File another expense</a>\n    </main>\n  </body>\n</html>",
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "status": 201
+      },
+      "source": "observed"
+    }
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "captured_at": 1720000000.0,
+      "ordinal": 0,
+      "page_state": {
+        "controls": [
+          {
+            "autocomplete": null,
+            "css": "#merchant",
+            "field_name": "merchant",
+            "input_type": "",
+            "name": "Merchant",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#amount",
+            "field_name": "amount",
+            "input_type": "number",
+            "name": "Amount",
+            "role": "spinbutton"
+          },
+          {
+            "autocomplete": null,
+            "css": "#justification",
+            "field_name": "justification",
+            "input_type": "",
+            "name": "Justification for expenses over 1000",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#receipt",
+            "field_name": "receipt",
+            "input_type": "file",
+            "name": "Receipt",
+            "role": "button"
+          },
+          {
+            "autocomplete": null,
+            "css": "button",
+            "field_name": null,
+            "input_type": "submit",
+            "name": "Submit expense",
+            "role": "button"
+          }
+        ],
+        "text": "File an expense\nMerchant\nAmount\nJustification for expenses over 1000\nReceipt\nSubmit expense",
+        "title": "File an expense",
+        "url": "http://127.0.0.1/expense"
+      },
+      "screenshot": {
+        "path": "screenshots/000-navigate.png",
+        "sha256": "e96160a6a5340b617d6ee42072a0e76083118ce45dabe00672d06b7fa8fc2b15"
+      },
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "input",
+      "anchor": {
+        "css": "#merchant",
+        "name": "Merchant",
+        "role": "textbox"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 1,
+      "url": "http://127.0.0.1/expense",
+      "value": "Atlas Travel"
+    },
+    {
+      "action": "input",
+      "anchor": {
+        "css": "#amount",
+        "name": "Amount",
+        "role": "spinbutton"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 2,
+      "url": "http://127.0.0.1/expense",
+      "value": "1250.00"
+    },
+    {
+      "action": "input",
+      "anchor": {
+        "css": "#justification",
+        "name": "Justification for expenses over 1000",
+        "role": "textbox"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 3,
+      "url": "http://127.0.0.1/expense",
+      "value": "Client onsite travel required manager justification."
+    },
+    {
+      "action": "upload",
+      "anchor": {
+        "css": "#receipt",
+        "name": "Receipt",
+        "role": "button"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 4,
+      "url": "http://127.0.0.1/expense",
+      "value": {
+        "files": [
+          {
+            "content_type": "application/pdf",
+            "filename": "receipt.pdf",
+            "size": 57
+          }
+        ]
+      }
+    },
+    {
+      "action": "page_state",
+      "captured_at": 1720000000.0,
+      "ordinal": 5,
+      "page_state": {
+        "controls": [
+          {
+            "autocomplete": null,
+            "css": "#merchant",
+            "field_name": "merchant",
+            "input_type": "",
+            "name": "Merchant",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#amount",
+            "field_name": "amount",
+            "input_type": "number",
+            "name": "Amount",
+            "role": "spinbutton"
+          },
+          {
+            "autocomplete": null,
+            "css": "#justification",
+            "field_name": "justification",
+            "input_type": "",
+            "name": "Justification for expenses over 1000",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#receipt",
+            "field_name": "receipt",
+            "input_type": "file",
+            "name": "Receipt",
+            "role": "button"
+          },
+          {
+            "autocomplete": null,
+            "css": "button",
+            "field_name": null,
+            "input_type": "submit",
+            "name": "Submit expense",
+            "role": "button"
+          }
+        ],
+        "text": "File an expense\nMerchant\nAmount\nJustification for expenses over 1000\nReceipt\nSubmit expense",
+        "title": "File an expense",
+        "url": "http://127.0.0.1/expense"
+      },
+      "screenshot": {
+        "path": "screenshots/005-page-state.png",
+        "sha256": "50750de8a4bf94f570d1f228cc3e9ab7ad9025e9cb684be35946e1d53756ce98"
+      },
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "click",
+      "anchor": {
+        "css": "button",
+        "name": "Submit expense",
+        "role": "button"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 6,
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "submit",
+      "anchor": {
+        "css": "button",
+        "name": "Submit expense",
+        "role": "button"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 7,
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "page_state",
+      "captured_at": 1720000000.0,
+      "ordinal": 8,
+      "page_state": {
+        "controls": [
+          {
+            "autocomplete": null,
+            "css": "a",
+            "field_name": null,
+            "input_type": "",
+            "name": "File another expense",
+            "role": "link"
+          }
+        ],
+        "text": "Expense submitted\n\nExpense ID: EXP-0001\n\nMerchant\nAtlas Travel\nAmount\n1250.00\nFile another expense",
+        "title": "Expense submitted",
+        "url": "http://127.0.0.1/expense"
+      },
+      "screenshot": {
+        "path": "screenshots/008-page-state.png",
+        "sha256": "900a43f734d07f93edf393a30d81494c94c9b8629b5721dc5f965124b19c48f3"
+      },
+      "url": "http://127.0.0.1/expense"
+    }
+  ],
+  "task": "file expense"
+}

@@ -1,0 +1,305 @@
+{
+  "allowed_hosts": [
+    "127.0.0.1"
+  ],
+  "artifact_digest": "08fbb897ebe10621b700f035055e2afaf5c090872645a985370f6a8eef57e017",
+  "http_entries": [
+    {
+      "captured_at": 1720000000.0,
+      "method": "GET",
+      "ordinal": 0,
+      "request": {
+        "body": null,
+        "headers": {}
+      },
+      "response": {
+        "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>File an expense</title>\n    <style>\n      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; }\n      form { display: grid; gap: 0.75rem; }\n      input, button { font: inherit; padding: 0.6rem; }\n      .error { color: #a00; }\n    </style>\n  </head>\n  <body>\n    <main>\n      <h1>File an expense</h1>\n      \n<form method=\"post\" action=\"/expense\" enctype=\"multipart/form-data\">\n  <label for=\"merchant\">Merchant</label>\n  <input id=\"merchant\" name=\"merchant\" required>\n  <label for=\"amount\">Amount</label>\n  <input id=\"amount\" name=\"total_amount\" type=\"number\" min=\"0.01\" step=\"0.01\" required>\n  <label for=\"justification\">Justification for expenses over 1000</label>\n  <textarea id=\"justification\" name=\"justification\"></textarea>\n  <label for=\"receipt\">Receipt</label>\n  <input id=\"receipt\" name=\"receipt\" type=\"file\" accept=\"image/*,.pdf\" required>\n  <button type=\"submit\">Submit expense</button>\n</form>\n    </main>\n  </body>\n</html>",
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "status": 200
+      },
+      "source": "observed",
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "captured_at": 1720000000.0,
+      "method": "POST",
+      "ordinal": 1,
+      "request": {
+        "body": {
+          "fields": {
+            "justification": "",
+            "merchant": "Contoso Cafe",
+            "total_amount": "63.40"
+          },
+          "files": [
+            {
+              "content_type": "application/pdf",
+              "field": "receipt",
+              "filename": "receipt.pdf",
+              "sha256": "9119cb79f6ad6dfa90fb0bc3e2eba0c70f5b4b71cbdf24259488efb5f19e2653"
+            }
+          ],
+          "kind": "multipart"
+        },
+        "headers": {
+          "content-type": "multipart/form-data"
+        }
+      },
+      "response": {
+        "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>Expense submitted</title>\n    <style>\n      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; }\n      form { display: grid; gap: 0.75rem; }\n      input, button { font: inherit; padding: 0.6rem; }\n      .error { color: #a00; }\n    </style>\n  </head>\n  <body>\n    <main>\n      <h1>Expense submitted</h1>\n      <p>Expense ID: <strong>EXP-0001</strong></p>\n<dl>\n  <dt>Merchant</dt><dd>Contoso Cafe</dd>\n  <dt>Amount</dt><dd>63.40</dd>\n</dl>\n<a href=\"/expense\">File another expense</a>\n    </main>\n  </body>\n</html>",
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "status": 201
+      },
+      "source": "observed",
+      "url": "http://127.0.0.1/expense"
+    }
+  ],
+  "response_templates": [
+    {
+      "id": "a2088216b72888ef8cf42e9907fe72e557a5909de764a49bc8e3ab21cab3a698",
+      "request": {
+        "body": {
+          "fields": {
+            "justification": "",
+            "merchant": "Contoso Cafe",
+            "total_amount": "63.40"
+          },
+          "files": [
+            {
+              "content_type": "application/pdf",
+              "field": "receipt",
+              "filename": "receipt.pdf",
+              "sha256": "9119cb79f6ad6dfa90fb0bc3e2eba0c70f5b4b71cbdf24259488efb5f19e2653"
+            }
+          ],
+          "kind": "multipart"
+        },
+        "headers": {
+          "content-type": "multipart/form-data"
+        },
+        "method": "POST",
+        "url": "http://127.0.0.1/expense"
+      },
+      "response": {
+        "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>Expense submitted</title>\n    <style>\n      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; }\n      form { display: grid; gap: 0.75rem; }\n      input, button { font: inherit; padding: 0.6rem; }\n      .error { color: #a00; }\n    </style>\n  </head>\n  <body>\n    <main>\n      <h1>Expense submitted</h1>\n      <p>Expense ID: <strong>EXP-0001</strong></p>\n<dl>\n  <dt>Merchant</dt><dd>Contoso Cafe</dd>\n  <dt>Amount</dt><dd>63.40</dd>\n</dl>\n<a href=\"/expense\">File another expense</a>\n    </main>\n  </body>\n</html>",
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "status": 201
+      },
+      "source": "observed"
+    }
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "captured_at": 1720000000.0,
+      "ordinal": 0,
+      "page_state": {
+        "controls": [
+          {
+            "autocomplete": null,
+            "css": "#merchant",
+            "field_name": "merchant",
+            "input_type": "",
+            "name": "Merchant",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#amount",
+            "field_name": "total_amount",
+            "input_type": "number",
+            "name": "Amount",
+            "role": "spinbutton"
+          },
+          {
+            "autocomplete": null,
+            "css": "#justification",
+            "field_name": "justification",
+            "input_type": "",
+            "name": "Justification for expenses over 1000",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#receipt",
+            "field_name": "receipt",
+            "input_type": "file",
+            "name": "Receipt",
+            "role": "button"
+          },
+          {
+            "autocomplete": null,
+            "css": "button",
+            "field_name": null,
+            "input_type": "submit",
+            "name": "Submit expense",
+            "role": "button"
+          }
+        ],
+        "text": "File an expense\nMerchant\nAmount\nJustification for expenses over 1000\nReceipt\nSubmit expense",
+        "title": "File an expense",
+        "url": "http://127.0.0.1/expense"
+      },
+      "screenshot": {
+        "path": "screenshots/000-navigate.png",
+        "sha256": "e96160a6a5340b617d6ee42072a0e76083118ce45dabe00672d06b7fa8fc2b15"
+      },
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "input",
+      "anchor": {
+        "css": "#merchant",
+        "name": "Merchant",
+        "role": "textbox"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 1,
+      "url": "http://127.0.0.1/expense",
+      "value": "Contoso Cafe"
+    },
+    {
+      "action": "input",
+      "anchor": {
+        "css": "#amount",
+        "name": "Amount",
+        "role": "spinbutton"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 2,
+      "url": "http://127.0.0.1/expense",
+      "value": "63.40"
+    },
+    {
+      "action": "upload",
+      "anchor": {
+        "css": "#receipt",
+        "name": "Receipt",
+        "role": "button"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 3,
+      "url": "http://127.0.0.1/expense",
+      "value": {
+        "files": [
+          {
+            "content_type": "application/pdf",
+            "filename": "receipt.pdf",
+            "size": 55
+          }
+        ]
+      }
+    },
+    {
+      "action": "page_state",
+      "captured_at": 1720000000.0,
+      "ordinal": 4,
+      "page_state": {
+        "controls": [
+          {
+            "autocomplete": null,
+            "css": "#merchant",
+            "field_name": "merchant",
+            "input_type": "",
+            "name": "Merchant",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#amount",
+            "field_name": "total_amount",
+            "input_type": "number",
+            "name": "Amount",
+            "role": "spinbutton"
+          },
+          {
+            "autocomplete": null,
+            "css": "#justification",
+            "field_name": "justification",
+            "input_type": "",
+            "name": "Justification for expenses over 1000",
+            "role": "textbox"
+          },
+          {
+            "autocomplete": null,
+            "css": "#receipt",
+            "field_name": "receipt",
+            "input_type": "file",
+            "name": "Receipt",
+            "role": "button"
+          },
+          {
+            "autocomplete": null,
+            "css": "button",
+            "field_name": null,
+            "input_type": "submit",
+            "name": "Submit expense",
+            "role": "button"
+          }
+        ],
+        "text": "File an expense\nMerchant\nAmount\nJustification for expenses over 1000\nReceipt\nSubmit expense",
+        "title": "File an expense",
+        "url": "http://127.0.0.1/expense"
+      },
+      "screenshot": {
+        "path": "screenshots/004-page-state.png",
+        "sha256": "caf5823e66ec007550c507287c1b3e32cfc8ea8583eabe9c5b2f42ab12b185d6"
+      },
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "click",
+      "anchor": {
+        "css": "button",
+        "name": "Submit expense",
+        "role": "button"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 5,
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "submit",
+      "anchor": {
+        "css": "button",
+        "name": "Submit expense",
+        "role": "button"
+      },
+      "captured_at": 1720000000.0,
+      "ordinal": 6,
+      "url": "http://127.0.0.1/expense"
+    },
+    {
+      "action": "page_state",
+      "captured_at": 1720000000.0,
+      "ordinal": 7,
+      "page_state": {
+        "controls": [
+          {
+            "autocomplete": null,
+            "css": "a",
+            "field_name": null,
+            "input_type": "",
+            "name": "File another expense",
+            "role": "link"
+          }
+        ],
+        "text": "Expense submitted\n\nExpense ID: EXP-0001\n\nMerchant\nContoso Cafe\nAmount\n63.40\nFile another expense",
+        "title": "Expense submitted",
+        "url": "http://127.0.0.1/expense"
+      },
+      "screenshot": {
+        "path": "screenshots/007-page-state.png",
+        "sha256": "eae21a439c80dea9e2f9b5528a8b0a58415be3ab21d78485acf83b5c6bd4be45"
+      },
+      "url": "http://127.0.0.1/expense"
+    }
+  ],
+  "task": "file expense"
+}

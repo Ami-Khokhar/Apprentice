@@ -1,0 +1,100 @@
+{
+  "task": "file expense",
+  "goal": "File a reimbursable expense in the portal and receive a confirmation with an expense ID.",
+  "inputs": [
+    {
+      "name": "merchant",
+      "description": "The vendor or merchant name printed on the receipt.",
+      "anchor": { "css": "#merchant", "role": "textbox", "name": "Merchant" },
+      "required": true
+    },
+    {
+      "name": "amount",
+      "description": "The total amount being reimbursed, in the portal's default currency.",
+      "anchor": { "css": "#amount", "role": "spinbutton", "name": "Amount" },
+      "required": true
+    },
+    {
+      "name": "receipt",
+      "description": "An itemized receipt file supporting the expense.",
+      "anchor": { "css": "#receipt", "role": "button", "name": "Receipt" },
+      "required": true
+    },
+    {
+      "name": "justification",
+      "description": "Manager justification text, required only when amount exceeds policy.",
+      "anchor": {
+        "css": "#justification",
+        "role": "textbox",
+        "name": "Justification for expenses over 1000"
+      },
+      "required": false
+    }
+  ],
+  "preconditions": [
+    "The user is signed in to the expense portal.",
+    "The expense filing form at /expense is reachable."
+  ],
+  "steps": [
+    {
+      "intent": "Open the expense filing form",
+      "action": "navigate",
+      "anchor": { "css": "main", "role": "document", "name": "File an expense" },
+      "value_template": null,
+      "effect": "observe"
+    },
+    {
+      "intent": "Enter the merchant shown on the receipt",
+      "action": "fill",
+      "anchor": { "css": "#merchant", "role": "textbox", "name": "Merchant" },
+      "value_template": "{merchant}",
+      "effect": "prepare"
+    },
+    {
+      "intent": "Enter the reimbursement amount",
+      "action": "fill",
+      "anchor": { "css": "#amount", "role": "spinbutton", "name": "Amount" },
+      "value_template": "{amount}",
+      "effect": "prepare"
+    },
+    {
+      "intent": "Provide manager justification when the amount exceeds policy",
+      "action": "fill",
+      "anchor": {
+        "css": "#justification",
+        "role": "textbox",
+        "name": "Justification for expenses over 1000"
+      },
+      "value_template": "{justification}",
+      "effect": "prepare"
+    },
+    {
+      "intent": "Attach the itemized receipt",
+      "action": "upload",
+      "anchor": { "css": "#receipt", "role": "button", "name": "Receipt" },
+      "value_template": "{receipt}",
+      "effect": "prepare"
+    },
+    {
+      "intent": "Submit the expense for processing",
+      "action": "commit",
+      "anchor": { "css": "button", "role": "button", "name": "Submit expense" },
+      "value_template": null,
+      "effect": "commit"
+    }
+  ],
+  "decision_points": [
+    {
+      "condition": "amount > 1000",
+      "input_ref": "amount",
+      "activates_input": "justification",
+      "supporting_demonstrations": ["training_1", "training_2"],
+      "description": "Expenses over 1000 require a manager justification before the commit step; training_1 (42.50) omits it, training_2 (1250.00) supplies it."
+    }
+  ],
+  "success_criteria": {
+    "status_code": 201,
+    "page_contains": "Expense submitted"
+  },
+  "version": 1
+}
