@@ -8,14 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from apprentice.incident.generated import GeneratedScenarioSpec
 
-ScenarioId = Literal[
-    "checkout-worker-lease-leak",
-    "checkout-worker-lease-leak-hard",
-    "enterprise-renewal-escalation",
-    "credential-stuffing-response",
-    "model-quality-regression",
-]
-
 
 class PracticeModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -24,10 +16,6 @@ class PracticeModel(BaseModel):
 class LearnerProfile(PracticeModel):
     field: str = Field(min_length=1, max_length=240)
     work_context: str | None = Field(default=None, max_length=4_000)
-
-
-class ScenarioSelection(PracticeModel):
-    scenario_id: ScenarioId
 
 
 class ScenarioBlueprint(PracticeModel):
@@ -99,8 +87,8 @@ class PracticeSession(PracticeModel):
     scenario: ScenarioBlueprint
     incident_id: str
     world: dict[str, Any]
-    runtime_kind: Literal["authored", "generated"] = "authored"
-    generated_spec: GeneratedScenarioSpec | None = None
+    runtime_kind: Literal["generated"] = "generated"
+    generated_spec: GeneratedScenarioSpec
     turns: tuple[PracticeTurn, ...] = ()
     debrief: FinalDebrief | None = None
     created_at: float

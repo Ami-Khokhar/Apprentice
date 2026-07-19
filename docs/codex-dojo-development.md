@@ -1,26 +1,22 @@
 # Codex development and Terra runtime
 
-The original Apprentice trust harness predates the professional-judgment dojo;
-its build history remains documented separately in `docs/codex-build-log.md`.
-The dojo product evolution was developed with Codex using GPT-5.6 Sol and a
-subagent-driven workflow.
+Apprentice was developed with Codex using GPT-5.6 Sol and a subagent-driven
+workflow. The product is intentionally limited to one job: generating and
+facilitating professional judgment simulations.
 
 ## Development workflow
 
-Codex was used to inspect the existing architecture, split implementation into
-bounded backend, simulation, interface, testing, and review tasks, and reconcile
-the results in the shared workspace. The work proceeded in progressive slices:
+Codex split implementation into bounded simulation, interface, persistence,
+testing, and review tasks, then reconciled the results in the shared workspace:
 
-1. preserve the existing trust harness behind `/legacy`;
-2. introduce typed practice-session contracts and durable SQLite storage;
-3. separate model facilitation from deterministic world authority;
-4. build the Japanese-dojo server-rendered interface;
-5. replace API-key execution with the locally authenticated Codex CLI;
-6. harden the CLI subprocess environment and disable tools for practice turns;
-7. add accessible loading states and desktop/mobile rendered QA;
-8. replace the finite authored selector with validated Terra-generated worlds;
-9. add semantic novelty rejection, bounded retries, persistence, and replay; and
-10. verify the final system with the full automated suite and real local runs.
+1. define typed generated-world and practice-session contracts;
+2. separate model facilitation from deterministic world authority;
+3. build the Japanese-dojo server-rendered interface;
+4. execute Terra through the locally authenticated Codex CLI;
+5. harden the CLI subprocess environment and disable tools for practice turns;
+6. add accessible loading states and desktop/mobile rendered QA;
+7. add semantic novelty rejection, bounded retries, persistence, and replay; and
+8. verify the system with automated tests and real local runs.
 
 Implementation subagents worked on isolated concerns while separate review
 passes looked for prompt-injection exposure, credential inheritance, structured
@@ -65,9 +61,7 @@ decision advanced the second generated action graph.
 
 ## Verification
 
-The default suite covers the deterministic engines, semantic validation,
-duplicate rejection, restart restoration, facilitator evidence boundaries,
-legacy compatibility, API behavior, and dojo templates. The final development
-run completed 400 tests with two explicitly marked live API-key tests deselected;
-the dojo's keyless Codex/Terra path was additionally exercised against the real
-locally authenticated CLI.
+The suite covers deterministic simulation, semantic validation, duplicate
+rejection, restart restoration, facilitator evidence boundaries, API behavior,
+and dojo templates. The keyless Codex/Terra path was also exercised against the
+real locally authenticated CLI.

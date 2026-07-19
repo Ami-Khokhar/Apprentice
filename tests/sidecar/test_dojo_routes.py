@@ -5,7 +5,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from apprentice.ledger.repository import Repository
+from apprentice.database import SQLiteDatabase
+from apprentice.incident.generated import GeneratedScenarioSpec
 from apprentice.practice import (
     DecisionAssessment,
     EvidenceReference,
@@ -27,27 +28,31 @@ from apprentice.practice.codex_runner import (
     CodexTimeoutError,
 )
 from apprentice.practice.service import PracticeService
-from apprentice.sidecar.app import _practice_page_context, build_sidecar
+from apprentice.sidecar.app import _practice_page_context, build_app, build_sidecar
 
 
 def _session(*, completed: bool = False) -> PracticeSession:
     now = time.time()
     turns = (
-        PracticeTurn(
-            response="I would stabilize the queue before restarting workers.",
-            action_kind="pause_dispatch",
-            assessment=DecisionAssessment(
-                response_excerpt="stabilize the queue",
-                interpretation="Stabilize demand before changing capacity.",
-                strength="Limits further damage.",
-                risk="The queue remains elevated.",
-                evidence=(EvidenceReference(source="metric", ref="queue_depth"),),
+        (
+            PracticeTurn(
+                response="I would stabilize the queue before restarting workers.",
+                action_kind="pause_dispatch",
+                assessment=DecisionAssessment(
+                    response_excerpt="stabilize the queue",
+                    interpretation="Stabilize demand before changing capacity.",
+                    strength="Limits further damage.",
+                    risk="The queue remains elevated.",
+                    evidence=(EvidenceReference(source="metric", ref="queue_depth"),),
+                ),
+                event_count=1,
+                outcome="recovered" if completed else "active",
             ),
-            event_count=1,
-            outcome="recovered" if completed else "active",
-        ),
-    ) if completed else ()
-    return PracticeSession(
+        )
+        if completed
+        else ()
+    )
+    return PracticeSession.model_construct(
         id="practice-1",
         profile=LearnerProfile(field="Software operations", work_context="On-call engineer"),
         scenario=ScenarioBlueprint(
@@ -69,6 +74,26 @@ def _session(*, completed: bool = False) -> PracticeSession:
             "available_actions": [],
             "outcome": "recovered" if completed else "active",
         },
+        generated_spec=GeneratedScenarioSpec.model_construct(
+            scenario_id="checkout-worker-lease-leak",
+            generation_nonce="test-nonce",
+            title="The queue is climbing",
+            learner_role="Incident commander",
+            setting="A checkout operations team during a traffic spike.",
+            core_challenge="Restore checkout processing without duplicating customer orders.",
+            failure_mechanism="Expired worker leases remain held and block healthy replacements.",
+            decision_tradeoff="Fast restarts may duplicate work while waiting extends disruption.",
+            briefing="Checkout jobs are timing out during a traffic spike.",
+            first_decision="What will you do first, and why?",
+            facts=(),
+            timeline=(),
+            metrics=(),
+            artifacts=(),
+            actions=(),
+            timed_escalations=(),
+            success_requirements=(),
+            rubric=(),
+        ),
         turns=turns,
         created_at=now,
         updated_at=now,
@@ -125,17 +150,35 @@ class FakePracticeService:
 
 def _client(tmp_path) -> tuple[TestClient, FakePracticeService]:
     service = FakePracticeService()
-    repository = Repository(tmp_path / "apprentice.db")
-    return TestClient(build_sidecar(repository=repository, practice_service=service)), service
+    database = SQLiteDatabase(tmp_path / "apprentice.db")
+    return TestClient(build_app(database=database, practice_service=service)), service
 
 
-def test_sidecar_defaults_dojo_to_local_codex_without_api_key(tmp_path, monkeypatch) -> None:
+def test_app_defaults_dojo_to_local_codex_without_api_key(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    app = build_sidecar(repository=Repository(tmp_path / "apprentice.db"))
+    app = build_app(database=SQLiteDatabase(tmp_path / "apprentice.db"))
 
     assert isinstance(app.state.practice_service, PracticeService)
     assert isinstance(app.state.practice_service._runner, CodexStructuredRunner)
+    assert build_sidecar is build_app
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/legacy",
+        "/console/dashboard",
+        "/api/buckets",
+        "/api/runs/legacy-run",
+        "/api/incidents/legacy-incident",
+        "/api/learners/legacy-learner",
+    ],
+)
+def test_legacy_routes_are_not_exposed(tmp_path, path: str) -> None:
+    client, _service = _client(tmp_path)
+
+    assert client.get(path).status_code == 404
 
 
 def test_practice_form_starts_session_and_redirects_to_briefing(tmp_path) -> None:
@@ -226,9 +269,7 @@ def test_html_practice_errors_render_calm_recovery_page(tmp_path) -> None:
 
     missing = client.get("/practice/missing")
     service.fail_response = True
-    invalid = client.post(
-        "/practice/practice-1/responses", data={"response": "Restart everything"}
-    )
+    invalid = client.post("/practice/practice-1/responses", data={"response": "Restart everything"})
     service.not_ready = True
     premature = client.get("/practice/practice-1/debrief")
 
@@ -276,9 +317,7 @@ def test_api_codex_failures_return_safe_structured_errors(
     client, service = _client(tmp_path)
     service.start_error = error
 
-    response = client.post(
-        "/api/practice/sessions", json={"field": "Software operations"}
-    )
+    response = client.post("/api/practice/sessions", json={"field": "Software operations"})
 
     assert response.status_code == expected_status
     assert response.json()["error"]["code"] == expected_code

@@ -1,4 +1,4 @@
-"""Codex-backed facilitation over the canonical deterministic incident runtime."""
+"""Codex-backed facilitation over generated deterministic practice worlds."""
 
 from __future__ import annotations
 
@@ -8,20 +8,17 @@ from collections.abc import Callable
 from typing import Any, Protocol, TypeVar, cast
 from uuid import uuid4
 
-from agents import Agent, Model, ModelSettings
-from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
+from apprentice.database import SQLiteDatabase
 from apprentice.incident.generated import (
     GeneratedScenarioError,
     GeneratedScenarioRuntime,
     GeneratedScenarioSpec,
     is_near_duplicate,
 )
-from apprentice.incident.runtime import IncidentRuntime
-from apprentice.ledger.db import SQLiteDatabase
 
-from .codex_runner import CodexOutputError, CodexStructuredRunner
+from .codex_runner import AgentSpec, CodexOutputError, CodexStructuredRunner
 from .contracts import (
     EvidenceReference,
     FacilitatorDecision,
@@ -33,7 +30,7 @@ from .contracts import (
 )
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
-StructuredRunner = Callable[[Agent[Any], str], BaseModel]
+StructuredRunner = Callable[[AgentSpec, str], BaseModel]
 DEFAULT_PRACTICE_MODEL = "gpt-5.6-terra"
 MAX_GENERATION_ATTEMPTS = 3
 
@@ -75,7 +72,7 @@ class MemorySessionStore:
             for session in sorted(
                 self._sessions.values(), key=lambda item: item.created_at, reverse=True
             )
-            if _profile_scope(session.profile) == scope and session.generated_spec is not None
+            if _profile_scope(session.profile) == scope
         )
 
 
@@ -86,7 +83,13 @@ class SQLiteSessionStore:
     def get(self, session_id: str) -> PracticeSession | None:
         with self._database.transaction() as connection:
             row = connection.execute(
-                "SELECT session_json FROM practice_sessions WHERE id = ?", (session_id,)
+                """
+                SELECT session_json
+                FROM practice_sessions
+                WHERE id = ?
+                  AND json_type(session_json, '$.generated_spec') = 'object'
+                """,
+                (session_id,),
             ).fetchone()
         return None if row is None else PracticeSession.model_validate_json(row["session_json"])
 
@@ -114,13 +117,18 @@ class SQLiteSessionStore:
         scope = _profile_scope(profile)
         with self._database.transaction() as connection:
             rows = connection.execute(
-                "SELECT session_json FROM practice_sessions ORDER BY created_at DESC"
+                """
+                SELECT session_json
+                FROM practice_sessions
+                WHERE json_type(session_json, '$.generated_spec') = 'object'
+                ORDER BY created_at DESC
+                """
             ).fetchall()
         sessions = (PracticeSession.model_validate_json(row["session_json"]) for row in rows)
         return tuple(
             session.generated_spec
             for session in sessions
-            if _profile_scope(session.profile) == scope and session.generated_spec is not None
+            if _profile_scope(session.profile) == scope
         )
 
 
@@ -129,15 +137,13 @@ class PracticeService:
 
     def __init__(
         self,
-        runtime: IncidentRuntime,
         *,
         database: SQLiteDatabase | None = None,
         runner: StructuredRunner | None = None,
-        model: str | Model = DEFAULT_PRACTICE_MODEL,
+        model: str = DEFAULT_PRACTICE_MODEL,
         store: SessionStore | None = None,
         generated_runtime: GeneratedScenarioRuntime | None = None,
     ) -> None:
-        self._runtime = runtime
         self._runner = runner if runner is not None else CodexStructuredRunner(timeout_seconds=120)
         self._model = model
         self._store = store or (SQLiteSessionStore(database) if database else MemorySessionStore())
@@ -182,7 +188,6 @@ class PracticeService:
             scenario=blueprint,
             incident_id=cast(str, world["id"]),
             world=world,
-            runtime_kind="generated",
             generated_spec=spec,
             created_at=now,
             updated_at=now,
@@ -194,16 +199,11 @@ class PracticeService:
         session = self._store.get(session_id)
         if session is None:
             raise PracticeSessionNotFoundError(f"Unknown practice session: {session_id}")
-        if session.runtime_kind == "generated":
-            if session.generated_spec is None:
-                raise InvalidPracticeResponseError("Generated practice session is missing its spec")
-            try:
-                world = self._generated_runtime.snapshot(session.incident_id)
-            except GeneratedScenarioError:
-                world = self._generated_runtime.restore(session.generated_spec, session.world)
-            world = self._generated_world(world)
-        else:
-            world = self._runtime.snapshot(session.incident_id)
+        try:
+            world = self._generated_runtime.snapshot(session.incident_id)
+        except GeneratedScenarioError:
+            world = self._generated_runtime.restore(session.generated_spec, session.world)
+        world = self._generated_world(world)
         if world != session.world:
             session = session.model_copy(update={"world": world, "updated_at": time.time()})
             self._store.save(session)
@@ -250,12 +250,9 @@ class PracticeService:
 
         world = session.world
         if decision.action_kind is not None:
-            if session.runtime_kind == "generated":
-                world = self._generated_world(
-                    self._generated_runtime.apply(session.incident_id, decision.action_kind)
-                )
-            else:
-                world = self._runtime.apply(session.incident_id, decision.action_kind)
+            world = self._generated_world(
+                self._generated_runtime.apply(session.incident_id, decision.action_kind)
+            )
         turn = PracticeTurn(
             response=response,
             action_kind=decision.action_kind,
@@ -288,8 +285,8 @@ class PracticeService:
         self._store.save(updated)
         return debrief
 
-    def _generator_agent(self) -> Agent[Any]:
-        return Agent(
+    def _generator_agent(self) -> AgentSpec:
+        return AgentSpec(
             name="dojo-scenario-generator",
             instructions=(
                 "Create one entirely new, realistic stress-test situation for the learner's "
@@ -306,12 +303,11 @@ class PracticeService:
                 "rename an old world."
             ),
             model=self._model,
-            model_settings=self._model_settings(),
             output_type=GeneratedScenarioSpec,
         )
 
-    def _facilitator_agent(self) -> Agent[Any]:
-        return Agent(
+    def _facilitator_agent(self) -> AgentSpec:
+        return AgentSpec(
             name="dojo-decision-facilitator",
             instructions=(
                 "Interpret the learner's proposed next step against the supplied canonical world. "
@@ -323,12 +319,11 @@ class PracticeService:
                 "contiguous substring, preserving exact case and punctuation."
             ),
             model=self._model,
-            model_settings=self._model_settings(),
             output_type=FacilitatorDecision,
         )
 
-    def _debrief_agent(self) -> Agent[Any]:
-        return Agent(
+    def _debrief_agent(self) -> AgentSpec:
+        return AgentSpec(
             name="dojo-practice-debrief",
             instructions=(
                 "Produce a concise professional debrief grounded only in the canonical world, its "
@@ -337,15 +332,12 @@ class PracticeService:
                 "Cite only IDs present in the payload; do not invent causes or outcomes."
             ),
             model=self._model,
-            model_settings=self._model_settings(),
             output_type=FinalDebrief,
         )
 
-    @staticmethod
-    def _model_settings() -> ModelSettings:
-        return ModelSettings(reasoning=Reasoning(effort="medium"), verbosity="medium")
-
-    def _run(self, agent: Agent[Any], prompt: str, output_type: type[TOutput]) -> TOutput:
+    def _run(
+        self, agent: AgentSpec, prompt: str, output_type: type[TOutput]
+    ) -> TOutput:
         output = self._runner(agent, prompt)
         if not isinstance(output, output_type):
             raise TypeError(

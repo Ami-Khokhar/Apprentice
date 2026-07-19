@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from agents import Agent
 from pydantic import BaseModel
 
 from apprentice.practice.codex_runner import (
+    AgentSpec,
     CodexAuthenticationError,
     CodexCLIUnavailableError,
     CodexExecutionError,
@@ -40,8 +40,8 @@ class FakeCommand:
         )
 
 
-def agent() -> Agent[Any]:
-    return Agent(
+def agent() -> AgentSpec:
+    return AgentSpec(
         name="test-agent",
         instructions="Use only canonical evidence.",
         model="gpt-5.6-terra",
@@ -135,8 +135,12 @@ def test_runner_uses_isolated_hardened_codex_command_and_stdin(
 
 def test_runner_honors_explicit_string_agent_model() -> None:
     fake = FakeCommand()
-    configured = agent()
-    configured.model = "explicit-test-model"
+    configured = AgentSpec(
+        name="test-agent",
+        instructions="Use only canonical evidence.",
+        model="explicit-test-model",
+        output_type=Result,
+    )
 
     CodexStructuredRunner(run_command=fake)(configured, "input")
 
@@ -181,17 +185,6 @@ def test_facilitator_schema_requires_nullable_fields_and_assessment_evidence() -
     coaching_variants = schema["properties"]["coaching_question"]["anyOf"]
     assert {variant.get("type") for variant in action_variants} == {"string", "null"}
     assert {variant.get("type") for variant in coaching_variants} == {"string", "null"}
-
-
-def test_runner_rejects_agents_with_tools_before_starting_codex() -> None:
-    fake = FakeCommand()
-    configured = agent()
-    configured.tools = [object()]  # type: ignore[list-item]
-
-    with pytest.raises(ValueError, match="does not permit agent tools"):
-        CodexStructuredRunner(run_command=fake)(configured, "input")
-
-    assert fake.calls == []
 
 
 def test_missing_cli_has_actionable_safe_error() -> None:

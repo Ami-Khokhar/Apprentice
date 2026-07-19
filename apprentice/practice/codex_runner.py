@@ -7,16 +7,25 @@ import os
 import subprocess
 import tempfile
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from agents import Agent
 from pydantic import BaseModel, ValidationError
 
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_TIMEOUT_SECONDS = 120.0
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
+
+
+@dataclass(frozen=True)
+class AgentSpec:
+    """The static prompt contract required for one structured Codex turn."""
+
+    name: str
+    instructions: str
+    model: str
+    output_type: type[BaseModel]
 
 _ALLOWED_ENVIRONMENT_VARIABLES = (
     "PATH",
@@ -82,12 +91,10 @@ class CodexStructuredRunner:
         self._timeout_seconds = timeout_seconds
         self._run_command = run_command
 
-    def __call__(self, agent: Agent[Any], prompt: str) -> BaseModel:
+    def __call__(self, agent: AgentSpec, prompt: str) -> BaseModel:
         output_type = agent.output_type
         if not isinstance(output_type, type) or not issubclass(output_type, BaseModel):
             raise TypeError("CodexStructuredRunner requires a Pydantic agent output_type")
-        if agent.tools or agent.mcp_servers:
-            raise ValueError("CodexStructuredRunner does not permit agent tools or MCP servers")
         if not isinstance(agent.instructions, str):
             raise TypeError("CodexStructuredRunner requires static string agent instructions")
 
@@ -99,8 +106,7 @@ class CodexStructuredRunner:
                 json.dumps(output_type.model_json_schema()), encoding="utf-8"
             )
 
-            model = agent.model if isinstance(agent.model, str) else DEFAULT_CODEX_MODEL
-            command = self._command(workdir, schema_path, output_path, model)
+            command = self._command(workdir, schema_path, output_path, agent.model)
             request = self._request(agent, prompt)
             try:
                 result = self._run_command(
@@ -197,7 +203,7 @@ class CodexStructuredRunner:
         }
 
     @staticmethod
-    def _request(agent: Agent[Any], prompt: str) -> str:
+    def _request(agent: AgentSpec, prompt: str) -> str:
         return (
             f"Agent instructions:\n{agent.instructions}\n\n"
             "Execution constraints:\n"

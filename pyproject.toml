@@ -3,19 +3,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "apprentice-harness"
+name = "apprentice"
 version = "0.1.0"
 description = "A minimalist AI dojo for practicing professional judgment under pressure"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.115",
   "jinja2>=3.1",
-  "openai-agents>=0.18.1,<0.19",
-  "playwright>=1.50",
   "pydantic>=2.10",
   "python-multipart>=0.0.20",
-  "pyyaml>=6.0.2",
-  "sse-starlette>=2.2",
   "uvicorn>=0.34",
 ]
 
@@ -23,20 +19,14 @@ dependencies = [
 dev = [
   "httpx>=0.28",
   "pytest>=8.3",
-  "pytest-asyncio>=0.25",
   "ruff>=0.9",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["apprentice", "demo_incident_service", "demo_portal"]
+packages = ["apprentice"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
-addopts = "-m 'not live'"
-markers = [
-  "live: requires network access and credentials for APPRENTICE_PROVIDER; excluded by default",
-]
 
 [tool.ruff]
 target-version = "py312"

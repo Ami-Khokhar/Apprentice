@@ -8,7 +8,6 @@ from .contracts import (
     PracticeSession,
     PracticeTurn,
     ScenarioBlueprint,
-    ScenarioSelection,
 )
 from .service import (
     InvalidPracticeResponseError,
@@ -29,5 +28,4 @@ __all__ = [
     "PracticeSessionNotFoundError",
     "PracticeTurn",
     "ScenarioBlueprint",
-    "ScenarioSelection",
 ]

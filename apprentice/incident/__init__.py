@@ -1,17 +1,5 @@
-"""Deterministic Incident Command scenario runtime."""
+"""Validated deterministic worlds generated for dojo practice."""
 
-from .actors import InvalidActorRequestError
-from .runtime import (
-    DEFAULT_SCENARIO_ID,
-    IncidentNotFoundError,
-    IncidentRuntime,
-    InvalidIncidentActionError,
-)
+from .generated import GeneratedScenarioError, GeneratedScenarioRuntime, GeneratedScenarioSpec
 
-__all__ = [
-    "DEFAULT_SCENARIO_ID",
-    "IncidentNotFoundError",
-    "IncidentRuntime",
-    "InvalidActorRequestError",
-    "InvalidIncidentActionError",
-]
+__all__ = ["GeneratedScenarioError", "GeneratedScenarioRuntime", "GeneratedScenarioSpec"]
