@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apprentice · Run {{ run_id or "" }}</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --panel: #121a2b;
+    --panel-2: #17233a;
+    --border: rgba(148, 163, 184, 0.2);
+    --text: #e5eefc;
+    --muted: #9fb0cc;
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, #08101f 0%, var(--bg) 100%);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  a { color: inherit; }
+  button, input, code { font: inherit; }
+  button {
+    cursor: pointer;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 0.75rem 1rem;
+    background: var(--panel-2);
+    color: var(--text);
+  }
+  button.primary { background: linear-gradient(135deg, #2563eb, #4f46e5); border-color: transparent; }
+  button.success { background: rgba(52, 211, 153, 0.14); border-color: rgba(52, 211, 153, 0.24); }
+  button.danger { background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.22); }
+  button.warning { background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.22); }
+
+  .shell { width: min(1100px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 48px; }
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .topbar h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); letter-spacing: -0.03em; }
+  .muted, .meta, .helper { color: var(--muted); }
+  .badge-row, .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.5rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(125, 211, 252, 0.08);
+    border: 1px solid rgba(125, 211, 252, 0.16);
+  }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr); gap: 18px; }
+  .panel {
+    background: linear-gradient(180deg, rgba(18, 26, 43, 0.96), rgba(15, 23, 40, 0.98));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px;
+  }
+  .section { margin-top: 18px; }
+  .section h2, .section h3 { margin: 0 0 10px; letter-spacing: -0.02em; }
+  .json, .note {
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(8, 14, 26, 0.7);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    overflow: auto;
+  }
+  .json code { white-space: pre-wrap; word-break: break-word; }
+  .timeline, .checklist, .actions-list { list-style: none; margin: 0; padding: 0; }
+  .timeline li, .checklist li, .actions-list li {
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+    padding: 10px 0;
+  }
+  .timeline li:first-child, .checklist li:first-child, .actions-list li:first-child { border-top: 0; padding-top: 0; }
+  .status-pill {
+    display: inline-flex;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(148, 163, 184, 0.08);
+    text-transform: capitalize;
+  }
+  .status-pill.pending { color: #fde68a; border-color: rgba(251, 191, 36, 0.22); background: rgba(251, 191, 36, 0.12); }
+  .status-pill.success { color: #d1fae5; border-color: rgba(52, 211, 153, 0.24); background: rgba(52, 211, 153, 0.12); }
+  .status-pill.failure { color: #fecaca; border-color: rgba(248, 113, 113, 0.22); background: rgba(248, 113, 113, 0.12); }
+  .check-status { display: inline-block; min-width: 72px; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.82rem; }
+  .pass { color: var(--good); }
+  .fail { color: var(--bad); }
+  .pending { color: var(--warn); }
+  .field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .field input {
+    width: 100%;
+    padding: 0.75rem 0.85rem;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(9, 15, 27, 0.92);
+    color: var(--text);
+  }
+
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 520px) { .shell { width: min(100vw - 20px, 1100px); padding-top: 16px; } }
+
+  :root { --bg:#080806; --panel:#181714; --panel-2:#24221d; --border:rgba(238,233,223,.18); --text:#eee9df; --muted:#b2aca1; --good:#98c5a1; --warn:#d7b66d; --bad:#dc796b; }
+  body { font-family:Manrope,Arial,sans-serif; background:radial-gradient(ellipse at 42% -25%,#211b12 0%,#090806 52%,#000 100%); }
+  .topbar h1,.section h2,.section h3 { font-family:"Instrument Serif",Georgia,serif; font-weight:400; }
+  .topbar h1 { font-size:clamp(2rem,3vw,2.8rem); }
+  .badge,.status-pill { border-radius:0; border-color:rgba(190,163,106,.32); background:rgba(190,163,106,.08); font-family:"DM Mono",monospace; font-size:.78rem; }
+  .panel { border-radius:0; background:linear-gradient(145deg,rgba(34,32,27,.96),rgba(18,17,14,.98)); }
+  .json,.note { border-radius:0; background:rgba(4,4,3,.34); border-color:rgba(238,233,223,.12); }
+  button { border-radius:0; border-color:rgba(190,163,106,.52); background:#24221d; font-family:"DM Mono",monospace; font-size:.78rem; }
+  button.primary { background:#eee9df; color:#171513; border-color:transparent; box-shadow:4px 4px 0 #671e17; }
+  button.success { background:rgba(152,197,161,.12); border-color:rgba(152,197,161,.46); }
+  button.warning { background:rgba(190,163,106,.14); border-color:rgba(190,163,106,.5); }
+  button.danger { background:rgba(184,65,50,.15); border-color:rgba(184,65,50,.52); }
+  .field input { border-radius:0; border-color:rgba(190,163,106,.36); background:#12110f; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Run review</h1>
+        {% if run_id %}
+          <p class="meta">Inspect the stored plan, approval boundary, and verified outcome for a single run.</p>
+        {% else %}
+          <p class="meta">No runs recorded yet.</p>
+        {% endif %}
+      </div>
+      <div class="badge-row">
+        <a class="badge" href="/console/dashboard">Back to dashboard</a>
+        {% if run_id %}<span class="badge">Run <code>{{ run_id }}</code></span>{% endif %}
+      </div>
+    </header>
+
+    {% if run_id %}
+      <section class="grid">
+        <article class="panel">
+          <div class="badge-row">
+            <span class="badge">Capability {{ bucket_name }}</span>
+            <span class="status-pill{% if state in ['approval_pending', 'veto_pending', 'rehearsing', 'authorized', 'executing'] %} pending{% elif state == 'succeeded' %} success{% elif state in ['failed', 'rehearsal_failed', 'denied', 'vetoed', 'expired'] %} failure{% endif %}">{{ state_label }}</span>
+          </div>
+
+          <div class="section">
+            <h2>Run inputs</h2>
+            <div class="json"><code>{{ inputs | tojson(indent=2) }}</code></div>
+          </div>
+
+          <div class="section">
+            <h2>Stored action plan</h2>
+            {% if actions %}
+              <ol class="actions-list">
+                {% for action in actions %}
+                  <li>
+                    <strong>#{{ action.ordinal }} · {{ action.tool_name }}</strong>
+                    <div class="helper">Effect: {{ action.effect }}</div>
+                    <div class="json" style="margin-top: 8px;"><code>{{ action.arguments | tojson(indent=2) }}</code></div>
+                  </li>
+                {% endfor %}
+              </ol>
+            {% else %}
+              <p class="muted">No twin actions recorded for this run.</p>
+            {% endif %}
+          </div>
+
+          <div class="section">
+            <h2>State transitions</h2>
+            {% if transitions %}
+              <ol class="timeline">
+                {% for transition in transitions %}
+                  <li>
+                    <strong>{{ transition.from_state or 'start' }} → {{ transition.to_state }}</strong>
+                    <div class="helper">{{ transition.reason }} · {{ transition.created_at }}</div>
+                  </li>
+                {% endfor %}
+              </ol>
+            {% else %}
+              <p class="muted">No transitions recorded yet.</p>
+            {% endif %}
+          </div>
+        </article>
+
+        <aside class="panel">
+          <div class="section" style="margin-top: 0;">
+            <h2>Approval boundary</h2>
+            <div class="controls">
+              {% if state == 'rehearsed' %}
+                <form data-json-post method="post" action="{{ approval_urls.activate }}">
+                  <button class="primary" type="submit">Activate rehearsed plan</button>
+                </form>
+              {% elif state == 'approval_pending' %}
+                <form data-json-post method="post" action="{{ approval_urls.approve }}">
+                  <input type="hidden" name="approved" value="true">
+                  <button class="success" type="submit">Approve</button>
+                </form>
+                <form data-json-post method="post" action="{{ approval_urls.reject }}">
+                  <input type="hidden" name="approved" value="false">
+                  <div class="field">
+                    <input type="text" name="reason" placeholder="Reason for rejection">
+                  </div>
+                  <button class="danger" type="submit">Reject with reason</button>
+                </form>
+              {% elif state == 'veto_pending' %}
+                <form data-json-post method="post" action="{{ approval_urls.cancel_veto }}">
+                  <button class="warning" type="submit">Cancel veto</button>
+                </form>
+              {% elif verdict %}
+                <div class="note">Verdict: <strong>{{ verdict.decision }}</strong> by {{ verdict.decided_by }}.</div>
+              {% elif veto %}
+                <div class="note">Veto status: <strong>{{ veto.status }}</strong>.</div>
+              {% else %}
+                <p class="muted">No approval action pending.</p>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Invariant checklist</h2>
+            <ul class="checklist">
+              {% for item in checklist %}
+                <li>
+                  <span class="check-status {{ 'pass' if item.status == true else ('fail' if item.status == false else 'pending') }}">{{ 'pass' if item.status == true else ('fail' if item.status == false else 'pending') }}</span>
+                  <span>{{ item.name }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="section">
+            <h2>Production replay</h2>
+            {% if production_replay %}
+              <div class="note">Executed: {{ 'yes' if production_replay.executed else 'not yet' }} · plan hash <code>{{ production_replay.action_plan_hash or 'n/a' }}</code></div>
+            {% else %}
+              <p class="muted">Not yet executed.</p>
+            {% endif %}
+          </div>
+
+          <div class="section">
+            <h2>Verified outcome</h2>
+            {% if outcome %}
+              <div class="note">
+                {% if outcome.succeeded %}
+                  Succeeded at trust level {{ outcome.trust_level_at_outcome }}.
+                {% else %}
+                  Failed{% if outcome.failure_cause %} · {{ outcome.failure_cause }}{% endif %}.
+                {% endif %}
+              </div>
+            {% else %}
+              <p class="muted">No verified outcome yet.</p>
+            {% endif %}
+          </div>
+        </aside>
+      </section>
+    {% endif %}
+  </div>
+
+  <script>
+    (function () {
+      document.querySelectorAll("form[data-json-post]").forEach(function (form) {
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          var payload = {};
+          form.querySelectorAll("[name]").forEach(function (field) {
+            var value = field.value;
+            payload[field.name] = value === "true" ? true : value === "false" ? false : value;
+          });
+          fetch(form.getAttribute("action"), {
+            method: form.getAttribute("method") || "POST",
+            headers: Object.keys(payload).length ? { "Content-Type": "application/json" } : {},
+            body: Object.keys(payload).length ? JSON.stringify(payload) : undefined,
+          }).then(function (response) {
+            return response.json().then(function (body) {
+              if (!response.ok) {
+                var message = body && body.error && body.error.message ? body.error.message : "Request failed";
+                throw new Error(message);
+              }
+              return body;
+            });
+          }).then(function () {
+            window.location.reload();
+          }).catch(function (error) {
+            window.alert(error.message);
+          });
+        });
+      });
+    }());
+  </script>
+</body>
+</html>

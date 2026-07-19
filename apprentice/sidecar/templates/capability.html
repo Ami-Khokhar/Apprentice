@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apprentice · {{ capability.name }}</title>
+<style>
+  :root { color-scheme:dark; --bg:#080806; --panel:#181714; --border:rgba(238,233,223,.18); --text:#eee9df; --muted:#b2aca1; --good:#98c5a1; }
+  * { box-sizing:border-box; } body { margin:0; background:radial-gradient(ellipse at 42% -25%,#211b12 0%,#090806 52%,#000 100%); color:var(--text); font:16px/1.5 Manrope,Arial,sans-serif; }
+  .shell { width:min(1000px,calc(100vw - 32px)); margin:auto; padding:24px 0 48px; } .panel { margin-top:18px; padding:20px; border:1px solid var(--border); border-radius:0; background:linear-gradient(145deg,rgba(34,32,27,.96),rgba(18,17,14,.98)); }
+  .meta,.muted { color:var(--muted); } h1,h2 { font-family:"Instrument Serif",Georgia,serif; font-weight:400; } .pills { display:flex; flex-wrap:wrap; gap:8px; } .pill { padding:.35rem .65rem; border:1px solid rgba(190,163,106,.32); border-radius:0; color:#e6ddd0; font:11px "DM Mono",monospace; text-transform:uppercase; } .ladder { display:flex; gap:8px; margin:16px 0; } .level { padding:.4rem .7rem; border:1px solid var(--border); border-radius:0; font:12px "DM Mono",monospace; } .reached { color:#d5ebd9; border-color:rgba(152,197,161,.46); } ul { padding-left:20px; } table { width:100%; border-collapse:collapse; } td,th { padding:.75rem 0; border-top:1px solid var(--border); text-align:left; } a { color:inherit; } a:hover { color:#e7cc8c; } button { padding:.65rem .85rem; color:var(--text); background:#24221d; border:1px solid rgba(190,163,106,.5); border-radius:0; cursor:pointer; font:12px "DM Mono",monospace; } button.good { border-color:rgba(152,197,161,.5); }
+</style>
+</head>
+<body><main class="shell">
+  <a href="/console/dashboard">← Control console</a>
+  <section class="panel"><div class="pills"><span class="pill">{{ capability.kind }}</span><span class="pill">Risk {{ capability.risk_class }}</span><span class="pill">Effective L{{ capability.effective_level }}</span></div><h1>{{ capability.name }}</h1><p class="meta">{{ capability.task or "No reviewed task description recorded yet." }}</p><div class="ladder">{% for step in capability.ladder %}<span class="level{% if step.reached %} reached{% endif %}">L{{ step.level }}</span>{% endfor %}</div><p>Trust score {{ '%.4f'|format(capability.score) }} · risk cap L{{ capability.risk_cap }}</p></section>
+  <section class="panel"><h2>Promotion status</h2>{% if capability.next_promotion.eligible %}<p>Eligible for promotion to L{{ capability.next_promotion.target_level }}.</p><form data-json-post method="post" action="/api/buckets/{{ capability.bucket_id }}/promote"><button class="good">Promote capability</button></form>{% elif capability.next_promotion.at_ceiling %}<p>This capability has reached its allowed trust ceiling.</p>{% else %}<p>Promotion to L{{ capability.next_promotion.target_level }} is blocked by:</p><ul>{% for reason in promotion_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>{% endif %}</section>
+  <section class="panel"><h2>Runs for this capability</h2>{% if recent_runs %}<table><thead><tr><th>Run</th><th>State</th><th></th></tr></thead><tbody>{% for run in recent_runs %}<tr><td><code>{{ run.id }}</code></td><td>{{ run.state_label }}</td><td><a href="{{ run.path }}">Open run</a></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">No runs created for this capability yet.</p>{% endif %}</section>
+</main><script>(function(){document.querySelectorAll('form[data-json-post]').forEach(function(form){form.addEventListener('submit',function(event){event.preventDefault();fetch(form.action,{method:'POST'}).then(function(response){if(!response.ok)throw new Error('Promotion failed');location.reload();}).catch(function(error){alert(error.message);});});}());</script></body></html>
