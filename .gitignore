@@ -1,0 +1,23 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+*.db-shm
+*.db-wal
+dist/
+build/
+*.egg-info/
+playwright-report/
+test-results/
+.playwright-mcp/
+.superpowers/sdd/
+
+# Separate local profile-art experiment; not part of Apprentice.
+Ami-Khokhar/
+profile-live.png
