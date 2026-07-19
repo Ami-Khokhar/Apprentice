@@ -1,0 +1,22 @@
+half_life_days: 30
+decay_idle_days: 21
+severity_demotion:
+  major: 1
+  critical: 2
+signal_weights:
+  rubber_stamp: 0.3
+  default: 1.0
+  engaged: 1.2
+twin_pass_weight: 0.25
+veto_seconds: 5
+risk:
+  low: {sample_mult: 1.0, score_bonus: 0.00, max_level: 4}
+  medium: {sample_mult: 1.0, score_bonus: 0.00, max_level: 4}
+  high: {sample_mult: 2.0, score_bonus: 0.03, max_level: 4}
+  critical: {sample_mult: 2.0, score_bonus: 0.03, max_level: 3}
+levels:
+  1: {min_training_demonstrations: 2}
+  2: {min_unique_shadow_passes: 1, min_score: 0.85}
+  3: {min_approved_successes: 2, min_score: 0.90, max_vetoes_recent: 1}
+  4: {min_l3_successes: 5, min_score: 0.95}
+
