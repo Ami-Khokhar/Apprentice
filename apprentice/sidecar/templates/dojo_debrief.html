@@ -1,0 +1,59 @@
+{% extends "dojo_base.html" %}
+
+{% block title %}Your debrief · Apprentice{% endblock %}
+{% block body_class %}debrief-page{% endblock %}
+
+{% block progress %}<p class="progress-marker">Debrief</p>{% endblock %}
+
+{% block content %}
+  <article class="dojo-view debrief-view" aria-labelledby="debrief-title">
+    <header class="view-heading debrief-heading">
+      <h1 id="debrief-title">Your judgment under pressure</h1>
+    </header>
+
+    <div class="debrief-sections">
+      <section class="debrief-section" aria-labelledby="saw-title">
+        <h2 id="saw-title">What you saw</h2>
+        <div class="debrief-copy">
+          {% for item in debrief.what_you_saw %}<p>{{ item }}</p>{% endfor %}
+          {% for item in debrief.strong_decisions %}<p>{{ item }}</p>{% endfor %}
+        </div>
+      </section>
+
+      <section class="debrief-section" aria-labelledby="missed-title">
+        <h2 id="missed-title">What you missed</h2>
+        <div class="debrief-copy">
+          {% for item in debrief.what_you_missed %}<p>{{ item }}</p>{% endfor %}
+          {% for item in debrief.risky_assumptions %}<p>{{ item }}</p>{% endfor %}
+        </div>
+      </section>
+
+      <section class="debrief-section stronger-path" aria-labelledby="path-title">
+        <h2 id="path-title">A stronger path</h2>
+        <div class="debrief-copy">
+          <ol class="path-steps">
+            {% for step in debrief.stronger_path %}<li>{{ step }}</li>{% endfor %}
+          </ol>
+          <p class="expert-approach">{{ debrief.expert_approach }}</p>
+          {% if debrief.evidence %}
+            <p class="evidence-line">
+              <span>Evidence</span>
+              {% for item in debrief.evidence %}
+                <span>{{ item.source }} · {{ item.ref }}</span>{% if not loop.last %}<i aria-hidden="true">/</i>{% endif %}
+              {% endfor %}
+            </p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <p class="carry-forward"><span>Carry forward</span> · {{ debrief.carry_forward }}</p>
+
+    <a class="primary-action" href="/">
+      <span>Practice another situation</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M5 12h13M14 7l5 5-5 5"></path>
+      </svg>
+    </a>
+  </article>
+{% endblock %}

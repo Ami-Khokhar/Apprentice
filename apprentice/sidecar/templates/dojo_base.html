@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f0e6">
+  <title>{% block title %}Apprentice{% endblock %}</title>
+  <link rel="stylesheet" href="/static/dojo.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main-content">Skip to the practice</a>
+  <header class="site-header">
+    <a class="wordmark" href="/" aria-label="Apprentice home">Apprentice</a>
+    {% block progress %}{% endblock %}
+  </header>
+
+  <svg class="enso" aria-hidden="true" viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="42" pathLength="100"></circle>
+    <circle class="enso-echo" cx="60" cy="60" r="36" pathLength="100"></circle>
+  </svg>
+
+  <main id="main-content">
+    <div class="main-surface" data-main-surface>
+      {% block content %}{% endblock %}
+    </div>
+
+    <div class="loading-screen" id="loading-screen" role="status" aria-live="polite" aria-atomic="true" hidden>
+      <div class="loading-mark" aria-hidden="true">
+        <svg viewBox="0 0 120 120">
+          <circle class="loading-ring" cx="60" cy="60" r="42" pathLength="100"></circle>
+          <circle class="loading-seal" cx="60" cy="18" r="4"></circle>
+        </svg>
+      </div>
+      <p class="loading-title" data-loading-title>The guide is preparing</p>
+      <p class="loading-detail" data-loading-detail>Take one steady breath.</p>
+    </div>
+  </main>
+
+  <script src="/static/dojo.js" defer></script>
+</body>
+</html>

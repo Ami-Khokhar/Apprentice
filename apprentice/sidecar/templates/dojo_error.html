@@ -1,0 +1,21 @@
+{% extends "dojo_base.html" %}
+
+{% block title %}{{ title }} · Apprentice{% endblock %}
+{% block body_class %}error-page{% endblock %}
+
+{% block progress %}<p class="progress-marker">{{ status }}</p>{% endblock %}
+
+{% block content %}
+  <section class="dojo-view error-view" aria-labelledby="error-title">
+    <header class="view-heading">
+      <h1 id="error-title">{{ title }}</h1>
+      <p>{{ message }}</p>
+    </header>
+    <a class="primary-action" href="{{ return_href }}">
+      <span>{{ return_label }}</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M5 12h13M14 7l5 5-5 5"></path>
+      </svg>
+    </a>
+  </section>
+{% endblock %}

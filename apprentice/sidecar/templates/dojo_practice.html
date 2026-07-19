@@ -1,0 +1,144 @@
+{% extends "dojo_base.html" %}
+
+{% block title %}{{ session.title }} · Apprentice{% endblock %}
+{% block body_class %}practice-page stage-{{ session.stage }}{% if session.latest_turn %} has-coaching{% endif %}{% endblock %}
+
+{% block progress %}
+  <p class="progress-marker">
+    {% if session.stage == "briefing" %}Briefing <span>·</span> 01{% else %}Decision <span>·</span> 02{% endif %}
+  </p>
+{% endblock %}
+
+{% block content %}
+  {% if session.stage == "briefing" %}
+    <section class="dojo-view briefing-view" aria-labelledby="briefing-title">
+      <header class="view-heading briefing-heading">
+        <h1 id="briefing-title">{{ session.title }}</h1>
+        <p>{{ session.summary }}</p>
+      </header>
+
+      <ol class="causal-timeline" aria-label="How the situation developed">
+        {% for event in session.timeline %}
+          <li>
+            <span class="timeline-time">{{ event.time }}</span>
+            <span class="timeline-label">{{ event.label }}</span>
+          </li>
+        {% endfor %}
+      </ol>
+
+      <div class="briefing-context">
+        <p class="learner-role">{{ session.role }}</p>
+        <p>{{ session.constraint }}</p>
+      </div>
+
+      <a class="primary-action" href="#decision">
+        <span>Step into the situation</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M5 12h13M14 7l5 5-5 5"></path>
+        </svg>
+      </a>
+    </section>
+  {% endif %}
+
+  <section
+    class="dojo-view decision-view{% if session.stage == 'briefing' %} decision-continuation{% endif %}"
+    id="decision"
+    aria-labelledby="decision-title"
+  >
+    <header class="view-heading decision-heading">
+      <h1 id="decision-title">What would you do next—and why?</h1>
+      <p>
+        {% if session.situational_update %}
+          {{ session.situational_update }}
+        {% else %}
+          {{ session.summary }}
+        {% endif %}
+      </p>
+    </header>
+
+    {% if session.latest_turn %}
+      <section class="turn-coaching" aria-labelledby="turn-coaching-title">
+        <h2 id="turn-coaching-title">Your last decision</h2>
+        <blockquote>“{{ session.latest_turn.response_excerpt }}”</blockquote>
+        <dl class="assessment-lines">
+          <div>
+            <dt>Interpretation</dt>
+            <dd>{{ session.latest_turn.interpretation }}</dd>
+          </div>
+          <div>
+            <dt>Strength</dt>
+            <dd>{{ session.latest_turn.strength }}</dd>
+          </div>
+          <div>
+            <dt>Risk</dt>
+            <dd>{{ session.latest_turn.risk }}</dd>
+          </div>
+        </dl>
+        {% if session.latest_turn.evidence %}
+          <p class="evidence-line turn-evidence">
+            <span>Evidence</span>
+            {% for item in session.latest_turn.evidence %}
+              <span>{{ item.source }} · {{ item.ref }}</span>{% if not loop.last %}<i aria-hidden="true">/</i>{% endif %}
+            {% endfor %}
+          </p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if session.prior_turns %}
+      <details class="prior-turns">
+        <summary>Review earlier decisions</summary>
+        <div class="prior-turn-list">
+          {% for turn in session.prior_turns %}
+            <section>
+              <blockquote>“{{ turn.response_excerpt }}”</blockquote>
+              <p><strong>Interpretation</strong> · {{ turn.interpretation }}</p>
+              <p><strong>Strength</strong> · {{ turn.strength }}</p>
+              <p><strong>Risk</strong> · {{ turn.risk }}</p>
+            </section>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+
+    <form
+      class="dojo-form decision-form"
+      method="post"
+      action="/practice/{{ session.id }}/responses"
+      data-loading-title="Considering your decision"
+      data-loading-detail="The guide is tracing the consequences before the situation moves."
+    >
+      <div class="field-group">
+        <label class="visually-hidden" for="response">Your decision and reasoning</label>
+        <textarea
+          id="response"
+          name="response"
+          minlength="1"
+          maxlength="8000"
+          rows="7"
+          placeholder="Explain your first actions, what you need to learn, and how you will communicate."
+          required
+        ></textarea>
+      </div>
+
+      <button class="primary-action" type="submit">
+        <span>Commit decision</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M5 12h13M14 7l5 5-5 5"></path>
+        </svg>
+      </button>
+    </form>
+
+    {% if session.stage == "decision" %}
+      <details class="briefing-review">
+        <summary>Review the briefing</summary>
+        <div>
+          <p>{{ session.summary }}</p>
+          <p><strong>{{ session.role }}</strong><br>{{ session.constraint }}</p>
+        </div>
+      </details>
+    {% else %}
+      <a class="text-action" href="#briefing-title">Review the briefing</a>
+    {% endif %}
+  </section>
+{% endblock %}

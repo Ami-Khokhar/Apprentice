@@ -1,0 +1,53 @@
+{% extends "dojo_base.html" %}
+
+{% block title %}Enter the dojo · Apprentice{% endblock %}
+{% block body_class %}entry-page{% endblock %}
+
+{% block content %}
+  <section class="dojo-view entry-view" aria-labelledby="entry-title">
+    <header class="view-heading entry-heading">
+      <h1 id="entry-title">What work do you want to master?</h1>
+      <p>Describe the field you work in—or the one you’re preparing to enter.</p>
+    </header>
+
+    <form
+      class="dojo-form" method="post" action="/practice"
+      data-loading-title="Preparing your situation"
+      data-loading-detail="The guide is shaping a challenge around your work."
+    >
+      <div class="field-group">
+        <label for="field">Your field</label>
+        <input
+          id="field"
+          name="field"
+          type="text"
+          minlength="2"
+          maxlength="160"
+          autocomplete="organization-title"
+          placeholder="Site reliability engineering"
+          required
+        >
+      </div>
+
+      <div class="field-group">
+        <label for="work-description">
+          Your work, in your own words <span>· Optional</span>
+        </label>
+        <textarea
+          id="work-description"
+          name="work_description"
+          maxlength="2000"
+          rows="4"
+          placeholder="I support payment systems and want to become calmer during high-severity incidents."
+        ></textarea>
+      </div>
+
+      <button class="primary-action" type="submit">
+        <span>Enter the dojo</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M5 12h13M14 7l5 5-5 5"></path>
+        </svg>
+      </button>
+    </form>
+  </section>
+{% endblock %}
