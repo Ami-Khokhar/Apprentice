@@ -1,90 +1,194 @@
 # Apprentice
 
-Apprentice is a minimalist AI dojo for practicing professional judgment under
-pressure. Describe the work you do—or want to do—and the guide creates a new,
-role-specific situation in which you can practice making difficult decisions.
+> A minimalist AI dojo for practicing professional judgment under pressure.
 
-## How it works
+- **OpenAI Build Week track:** Education
+- **Built with:** Codex using GPT-5.6 Sol
+- **Powered by:** GPT-5.6 Terra through the locally authenticated Codex CLI
 
-1. You enter a professional field and optional work context.
-2. GPT-5.6 Terra invents a new stress-test situation tailored to that profile.
-3. Apprentice validates and freezes the generated facts, timeline, evidence,
-   metrics, actions, consequences, recovery conditions, and assessment rubric.
-4. You explain what you would do and why.
-5. Terra interprets your intent as at most one currently available action.
-6. A deterministic runtime applies the action and advances the situation.
-7. When the situation concludes, Terra produces an evidence-grounded debrief
-   with strengths, missed signals, risky assumptions, and a stronger path.
+Apprentice turns a learner's real or future profession into a new simulated
+stress situation. The learner receives the timeline and evidence, explains what
+they would do, experiences deterministic consequences, and finishes with an
+evidence-grounded debrief.
 
-The model creates and facilitates the exercise, but it cannot directly change
-the running world. Apprentice validates cited evidence before applying any
-decision, and only the deterministic runtime owns state transitions and
-outcomes.
+## The problem
 
-## New situations for every practice
+Professional judgment is usually learned after a costly mistake or by watching
+an experienced colleague handle a rare event. Static courses can teach concepts,
+but they struggle to recreate the ambiguity, time pressure, incomplete evidence,
+and trade-offs of real work.
 
-Generated situations are not selected from a fixed catalog. Each request asks
-Terra to invent a complete new scenario from the learner's field and context.
-Apprentice compares its semantic fingerprint and causal structure with recent
-situations for the same field. A duplicate is rejected and regenerated up to
-three times; if novelty cannot be established, the request fails safely instead
-of showing a repeated exercise.
+This affects people entering a field, changing careers, preparing for greater
+responsibility, or practicing situations that are too dangerous or expensive to
+rehearse in reality.
 
-## Design
+## Why the Education track
 
-The interface follows a calm Japanese-dojo visual language with generous
-spacing and one primary task at a time:
+Apprentice treats professional judgment as a learnable skill. It is designed for
+students preparing for work, career changers entering unfamiliar roles, and
+professionals who want deliberate practice before a high-pressure situation
+becomes real.
 
-- **Entry** — describe your field and work.
-- **Briefing** — understand the timeline, constraints, and first decision.
-- **Practice** — respond in your own words as the situation develops.
-- **Debrief** — review the evidence and a stronger decision path.
+The educational loop is specific: contextual briefing, learner-authored
+decision, observable consequence, evidence-grounded reflection, and an improved
+decision path. This submission is a working prototype for individual practice;
+it does not yet claim measured learning outcomes or institutional validation.
 
-Model calls use a branded loading overlay inside the main screen. The underlying
-content remains visible but blurred, so the page stays oriented without exposing
-duplicate actions while the guide is working.
+## The idea
 
-## Requirements
+Apprentice provides deliberate practice for decisions rather than recall.
 
-- Python 3.12
-- [uv](https://docs.astral.sh/uv/)
-- Codex CLI with a ChatGPT sign-in
+1. Describe a professional field and, optionally, the work you do or want to do.
+2. GPT-5.6 Terra invents a role-specific situation instead of selecting one from
+   a fixed scenario catalog.
+3. Apprentice validates and freezes the facts, causal timeline, evidence,
+   metrics, available actions, consequences, recovery conditions, and rubric.
+4. Explain your decision in your own words.
+5. Terra interprets that intent as at most one currently available action.
+6. A deterministic runtime—not the model—applies the action and advances time.
+7. Continue until recovery or terminal escalation, then receive a grounded
+   debrief with strengths, missed signals, risky assumptions, and a better path.
 
-Apprentice invokes the locally installed Codex CLI and does not require an
-`OPENAI_API_KEY`. Run `codex login` to complete the browser sign-in flow, and
-`codex login status` to check the active authentication method.
+## Why this is different
 
-## Run locally
+Most AI role-play is an unconstrained conversation: the model creates the
+problem, changes the world, and judges its own result. Apprentice separates those
+responsibilities.
 
-```bash
-codex login
-uv sync
-uv run uvicorn apprentice.sidecar.app:build_app --factory --host 127.0.0.1 --port 8000
-```
+- **Generative breadth:** Terra can invent situations for different professions
+  and work contexts.
+- **Deterministic consequences:** after generation, only validated rules can
+  change state.
+- **Evidence-bounded coaching:** assessments and debriefs may cite only canonical
+  actions, metrics, artifacts, and events.
+- **Semantic novelty:** prior causal structures are compared, so cosmetic
+  rewrites are rejected.
+- **Calm interaction:** the Japanese-dojo-inspired interface keeps one decision
+  in focus instead of turning the exercise into a dense dashboard.
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+The result combines the range of a language model with the inspectability of a
+small simulation engine.
 
-Practice sessions are stored in `apprentice.db` by default. Pass a different
-database path when calling `build_app` if needed.
+## A new situation every time
 
-## Codex and Terra boundary
+Each generation request includes a unique nonce that Terra must return exactly.
+Apprentice compares the new scenario with recent situations for the same
+normalized professional field using:
 
-Each AI turn runs `codex exec` with:
+- a fingerprint of its failure mechanism, trade-off, evidence, action graph,
+  effects, and escalation path; and
+- similarity across its core challenge, failure mechanism, and decision
+  trade-off.
 
-- the explicit `gpt-5.6-terra` model;
-- a Pydantic JSON output schema;
-- an isolated temporary working directory;
-- a read-only sandbox;
-- web search and interactive tools disabled; and
-- a minimal environment allowlist that excludes application API keys.
+Near-duplicates are rejected and regenerated up to three times. If novelty cannot
+be established, Apprentice fails safely instead of presenting a repeated
+exercise.
 
-Learner content is sent through standard input rather than command arguments.
-The Codex process returns only the structured value required for that turn.
+## Product experience
+
+The learner moves through four focused screens:
+
+1. **Entry** — describe the field and optional work context.
+2. **Briefing** — understand how the situation developed, the current
+   constraints, and the first decision.
+3. **Practice** — respond in free text and see the situation evolve.
+4. **Debrief** — review what was noticed, what was missed, and a stronger
+   decision sequence.
+
+While Terra generates a situation or evaluates a decision, a branded loading
+layer overlays only the main screen. The underlying content stays visible but
+blurred, maintaining orientation without making the page feel crowded.
+
+## How GPT-5.6 is used
+
+GPT-5.6 Terra has three bounded responsibilities:
+
+1. Generate a complete `GeneratedScenarioSpec` tailored to the learner.
+2. Interpret a free-text response as one enabled action or request precise
+   clarification.
+3. Produce the final debrief from the frozen world and learner transcript.
+
+Terra does **not** directly change simulation state. Pydantic validates every
+structured response, Apprentice verifies all cited evidence, and the
+`GeneratedScenarioRuntime` owns transitions, timing, metric effects, revealed
+artifacts, success, and terminal escalation.
+
+Each turn invokes `codex exec` with the explicit `gpt-5.6-terra` model,
+ephemeral execution, a read-only sandbox, an isolated temporary directory, and a
+JSON output schema. Shell, browser, apps, plugins, multi-agent use, image
+generation, and web search are disabled. Learner content is sent through
+standard input rather than process arguments, and the subprocess receives only a
+small environment allowlist needed to locate and authenticate Codex.
+
+## How Codex accelerated development
+
+Codex using GPT-5.6 Sol was the primary development collaborator. The work was
+split into bounded architecture, simulation, product interface, testing, and
+review tasks, with subagents used for parallel implementation and independent
+audits.
+
+Codex accelerated:
+
+- tracing the application from learner input through persistence and simulation;
+- replacing finite authored situations with validated Terra-generated worlds;
+- designing typed contracts for generation, facilitation, and debriefs;
+- implementing semantic duplicate detection and bounded regeneration;
+- integrating Terra through local ChatGPT authentication rather than an
+  application API key;
+- building the server-rendered dojo flow and branded loading state;
+- testing failure cases such as invalid references, impossible graphs, repeated
+  situations, unsafe subprocess inheritance, and restart restoration; and
+- reducing the final repository to the smallest current-product dependency
+  closure.
+
+The dated commit history records these changes in progressive, reviewable
+milestones.
+
+## Key product and engineering decisions
+
+| Decision | Human direction | Codex contribution |
+|---|---|---|
+| Generate rather than select scenarios | Every practice should feel new and match the learner's field. | Designed the structured generation contract, nonce check, semantic fingerprint, and retry path. |
+| Keep the model out of world authority | Coaching should be flexible without allowing invented consequences. | Separated Terra's structured interpretation from deterministic state transitions and added evidence validation. |
+| Use local Codex authentication | The learner flow should run through Codex rather than requiring an application API key. | Built and hardened the `codex exec` subprocess boundary. |
+| Make waiting part of the product | Generation and judgment need visible feedback without replacing the page. | Implemented a branded, accessible overlay that blurs only the main surface. |
+| Prefer calm focus over dashboard density | The simulation should not overwhelm or visually suffocate the learner. | Translated the Japanese dojo direction into a four-stage, server-rendered experience. |
+| Keep the final project minimal | Only code that serves the current learning experience should remain. | Audited dependencies and removed unrelated runtime, demos, fixtures, routes, and packages. |
+
+## Build Week development scope
+
+Exploratory product research and a different prototype direction existed before
+the submission period. That runtime is not part of the submitted product. The
+current professional-judgment dojo and every retained application module were
+built or meaningfully extended during OpenAI Build Week with Codex and GPT-5.6.
+
+Work completed for this submission includes:
+
+- the current education product concept and learner flow;
+- GPT-5.6 Terra scenario generation, facilitation, and debriefing;
+- generated-world validation and deterministic execution;
+- semantic novelty rejection and retry behavior;
+- durable generated-session restoration;
+- the Japanese-dojo interface and loading treatment;
+- the keyless, locally authenticated Codex runtime;
+- focused security boundaries and regression tests; and
+- removal of code unrelated to the submitted product.
+
+Evidence is available in the repository's dated commit history and
+[`docs/codex-dojo-development.md`](docs/codex-dojo-development.md).
+
+Selected Build Week milestones:
+
+- [validated Terra-generated worlds](https://github.com/Ami-Khokhar/Apprentice/commit/2febc8e);
+- [local Codex authentication and structured execution](https://github.com/Ami-Khokhar/Apprentice/commit/8fcf679);
+- [novel generation and decision facilitation](https://github.com/Ami-Khokhar/Apprentice/commit/471095c);
+- [the minimalist dojo interface](https://github.com/Ami-Khokhar/Apprentice/commit/737be72); and
+- [the final current-product reduction](https://github.com/Ami-Khokhar/Apprentice/commit/ed8a30b).
 
 ## Architecture
 
 ```text
-Browser
+Learner
   │
   ▼
 FastAPI + Jinja dojo
@@ -92,20 +196,75 @@ FastAPI + Jinja dojo
   ▼
 PracticeService ───────────────► SQLite session history
   │
-  ├──► Codex CLI / Terra ──────► generated scenario or structured guidance
+  ├──► Codex CLI / GPT-5.6 Terra
+  │       ├── scenario specification
+  │       ├── decision interpretation
+  │       └── final debrief
   │
-  └──► GeneratedScenarioRuntime ► deterministic state transition
+  └──► GeneratedScenarioRuntime
+          └── deterministic state transition
 ```
 
-The retained application is intentionally small:
+The current application is intentionally small:
 
-- `apprentice/incident/generated.py` validates generated worlds and applies
-  deterministic transitions.
-- `apprentice/practice/` owns session contracts, orchestration, and the
-  hardened Codex subprocess.
-- `apprentice/sidecar/` contains the web routes, dojo templates, CSS, and
-  loading behavior.
-- `apprentice/database.py` persists practice sessions in SQLite.
+- `apprentice/incident/generated.py` — scenario validation, novelty detection,
+  deterministic execution, and restoration.
+- `apprentice/practice/` — typed contracts, Codex runner, orchestration, and
+  session persistence.
+- `apprentice/sidecar/` — FastAPI routes, dojo templates, CSS, and loading
+  behavior.
+- `apprentice/database.py` — file-backed SQLite lifecycle and transactions.
+- `tests/` — generated-world, runner, service, route, and template coverage.
+
+## Judge quickstart
+
+### Requirements and supported platform
+
+- A desktop environment that can run the Codex CLI (verified on macOS)
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/)
+- [Codex CLI](https://developers.openai.com/codex/cli/) with access to
+  GPT-5.6 Terra
+
+### Install and run
+
+```bash
+git clone https://github.com/Ami-Khokhar/Apprentice.git
+cd Apprentice
+codex login
+uv sync --locked
+uv run uvicorn apprentice.sidecar.app:build_app --factory --host 127.0.0.1 --port 8000
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+Run `codex login status` if authentication needs to be checked. Apprentice uses
+the local ChatGPT/Codex login and does not require `OPENAI_API_KEY`.
+
+No sample dataset, seeded account, or separate application service is required
+beyond the authenticated Codex CLI. Practice sessions are stored locally in
+`apprentice.db`.
+
+### Suggested judge walkthrough
+
+1. Enter `Site reliability engineer`.
+2. Add `I manage production services and participate in incident response`.
+3. Start the practice and review the generated timeline and constraints.
+4. Explain a concrete first action and why you chose it.
+5. Continue until the debrief.
+6. Start another practice with the same field to observe novelty rejection and
+   a different generated situation.
+
+### Test without model credentials
+
+```bash
+uv sync --locked
+uv run ruff check .
+uv run pytest -q
+```
+
+The automated suite uses deterministic fake model responses, requires no network
+access, and currently contains 59 passing tests.
 
 ## Routes
 
@@ -117,22 +276,31 @@ Learner interface:
 - `POST /practice/{session_id}/responses`
 - `GET /practice/{session_id}/debrief`
 
-Equivalent JSON endpoints:
+Equivalent JSON API:
 
 - `POST /api/practice/sessions`
 - `GET /api/practice/sessions/{session_id}`
 - `POST /api/practice/sessions/{session_id}/responses`
 - `GET /api/practice/sessions/{session_id}/debrief`
 
-## Verify
+## Current limitations
 
-```bash
-uv run ruff check .
-uv run pytest -q
-```
+- The current release is a local, single-user experience.
+- A real practice requires a locally authenticated Codex account with access to
+  GPT-5.6 Terra.
+- Generation and judgment latency depend on the local Codex session.
+- Sessions are durable, but concurrent submissions and multi-user isolation are
+  not yet hardened.
+- Novelty detection is deliberately bounded; after three rejected generations,
+  the app returns a safe error.
+- Learning outcomes have not yet been evaluated with a learner study.
 
-The test suite uses deterministic fake model outputs, so it does not need
-network access or model credentials.
+## Hackathon submission notes
 
-Development and runtime boundaries are described in
-[`docs/codex-dojo-development.md`](docs/codex-dojo-development.md).
+- **Category:** Education
+- **Repository:** <https://github.com/Ami-Khokhar/Apprentice>
+- **Build Week requirements:** [overview](https://openai.devpost.com/) ·
+  [official rules](https://openai.devpost.com/rules)
+- **Demo video:** submitted separately as a public YouTube video.
+- **Codex session:** the primary thread's `/feedback` Session ID is supplied in
+  the Devpost submission form.
