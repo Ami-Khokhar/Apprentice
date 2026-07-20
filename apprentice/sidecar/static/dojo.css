@@ -37,6 +37,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -208,6 +209,7 @@ main {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #9d9488;
@@ -221,6 +223,17 @@ textarea {
 input {
   min-height: 52px;
   padding: 0.75rem 0.9rem;
+}
+
+select {
+  min-height: 52px;
+  padding: 0.75rem 2.5rem 0.75rem 0.9rem;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
 }
 
 textarea {
@@ -237,11 +250,13 @@ textarea::placeholder {
 }
 
 input:hover,
+select:hover,
 textarea:hover {
   border-color: var(--ink-muted);
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--vermilion);
   background: rgb(255 255 255 / 24%);
@@ -354,8 +369,30 @@ textarea:focus {
   line-height: 1.4;
 }
 
+.timeline-detail {
+  max-width: 16rem;
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
 .briefing-context {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
   margin-block: 2.25rem 1.5rem;
+}
+
+.briefing-section-title,
+.briefing-context h2,
+.first-decision h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.briefing-section-title {
+  margin-top: 2.25rem;
 }
 
 .briefing-context p {
@@ -367,6 +404,31 @@ textarea:focus {
   color: var(--sumi);
   font-size: 1.02rem;
   font-weight: 550;
+}
+
+.constraint-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--ink-muted);
+}
+
+.constraint-list li + li {
+  margin-top: 0.35rem;
+}
+
+.first-decision {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.1rem;
+  border-left: 3px solid var(--vermilion);
+  background: rgb(255 255 255 / 20%);
+}
+
+.first-decision p {
+  margin: 0;
+  color: var(--sumi);
+  font-family: var(--serif);
+  font-size: 1.12rem;
+  line-height: 1.45;
 }
 
 .decision-heading h1 {
@@ -835,6 +897,14 @@ body.is-loading {
   .causal-timeline li::before {
     top: 0.28rem;
     left: -1.2rem;
+  }
+
+  .timeline-detail {
+    grid-column: 2;
+  }
+
+  .briefing-context {
+    grid-template-columns: 1fr;
   }
 
   .debrief-section {

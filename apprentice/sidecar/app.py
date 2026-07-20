@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -37,6 +38,7 @@ class RequestModel(BaseModel):
 class StartPracticeRequest(RequestModel):
     field: str = Field(min_length=2, max_length=160, pattern=r".*\S.*")
     work_description: str | None = Field(default=None, max_length=2_000)
+    difficulty_level: int = Field(default=1, ge=1, le=10)
 
 
 class PracticeResponseRequest(RequestModel):
@@ -153,7 +155,9 @@ def build_app(
 
     @app.post("/api/practice/sessions", status_code=status.HTTP_201_CREATED)
     def create_practice_session(body: StartPracticeRequest) -> dict[str, object]:
-        session = service.start(body.field.strip(), _optional_text(body.work_description))
+        session = service.start(
+            body.field.strip(), _optional_text(body.work_description), body.difficulty_level
+        )
         return session.model_dump(mode="json")
 
     @app.get("/api/practice/sessions/{session_id}")
@@ -179,8 +183,11 @@ def build_app(
     def start_practice(
         field: Annotated[str, Form(min_length=2, max_length=160, pattern=r".*\S.*")],
         work_description: Annotated[str | None, Form(max_length=2_000)] = None,
+        difficulty_level: Annotated[int, Form(ge=1, le=10)] = 1,
     ) -> RedirectResponse:
-        session = service.start(field.strip(), _optional_text(work_description))
+        session = service.start(
+            field.strip(), _optional_text(work_description), difficulty_level
+        )
         return RedirectResponse(
             url=f"/practice/{session.id}", status_code=status.HTTP_303_SEE_OTHER
         )
@@ -282,10 +289,7 @@ def _practice_page_context(session: PracticeSession) -> dict[str, object]:
     world = raw["world"]
     turns = raw["turns"]
     developments = scenario["how_it_developed"]
-    timeline = [
-        item if isinstance(item, dict) else {"time": f"{index + 1:02}", "label": str(item)}
-        for index, item in enumerate(developments)
-    ]
+    timeline = [_timeline_context(item, index) for index, item in enumerate(developments)]
     events = world.get("events", [])
     latest_event = events[-1] if events else None
     if isinstance(latest_event, dict):
@@ -302,12 +306,23 @@ def _practice_page_context(session: PracticeSession) -> dict[str, object]:
         "summary": scenario["briefing"],
         "timeline": timeline,
         "role": scenario["learner_role"],
-        "constraint": " · ".join(scenario["immediate_constraints"]),
+        "constraints": scenario["immediate_constraints"],
         "first_decision": scenario["first_decision"],
         "situational_update": situational_update,
         "latest_turn": presented_turns[-1] if presented_turns else None,
         "prior_turns": presented_turns[:-1],
     }
+
+
+def _timeline_context(item: object, index: int) -> dict[str, object]:
+    if isinstance(item, dict):
+        return item
+    text = str(item)
+    match = re.fullmatch(r"(T-\d+m) · ([^:]+): (.+)", text)
+    if match is None:
+        return {"time": f"{index + 1:02}", "label": text, "detail": None}
+    time_label, label, detail = match.groups()
+    return {"time": time_label, "label": label, "detail": detail}
 
 
 def _practice_turn_context(turn: dict[str, object]) -> dict[str, object]:

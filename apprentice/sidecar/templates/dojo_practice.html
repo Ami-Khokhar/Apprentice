@@ -17,18 +17,33 @@
         <p>{{ session.summary }}</p>
       </header>
 
-      <ol class="causal-timeline" aria-label="How the situation developed">
+      <h2 class="briefing-section-title" id="what-happened-title">What happened</h2>
+      <ol class="causal-timeline" aria-labelledby="what-happened-title">
         {% for event in session.timeline %}
           <li>
             <span class="timeline-time">{{ event.time }}</span>
             <span class="timeline-label">{{ event.label }}</span>
+            {% if event.detail|default %}<span class="timeline-detail">{{ event.detail }}</span>{% endif %}
           </li>
         {% endfor %}
       </ol>
 
       <div class="briefing-context">
-        <p class="learner-role">{{ session.role }}</p>
-        <p>{{ session.constraint }}</p>
+        <div>
+          <h2>Your role</h2>
+          <p class="learner-role">{{ session.role }}</p>
+        </div>
+        <div>
+          <h2>What matters now</h2>
+          <ul class="constraint-list">
+            {% for constraint in session.constraints %}<li>{{ constraint }}</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="first-decision">
+        <h2>Your first decision</h2>
+        <p>{{ session.first_decision }}</p>
       </div>
 
       <a class="primary-action" href="#decision">
@@ -46,9 +61,11 @@
     aria-labelledby="decision-title"
   >
     <header class="view-heading decision-heading">
-      <h1 id="decision-title">What would you do next—and why?</h1>
+      <h1 id="decision-title">Make your decision</h1>
       <p>
-        {% if session.situational_update %}
+        {% if session.stage == "briefing" %}
+          Write what you would do first and why.
+        {% elif session.situational_update %}
           {{ session.situational_update }}
         {% else %}
           {{ session.summary }}
@@ -134,7 +151,12 @@
         <summary>Review the briefing</summary>
         <div>
           <p>{{ session.summary }}</p>
-          <p><strong>{{ session.role }}</strong><br>{{ session.constraint }}</p>
+          <p><strong>Your role</strong><br>{{ session.role }}</p>
+          <strong>What matters now</strong>
+          <ul>
+            {% for constraint in session.constraints %}<li>{{ constraint }}</li>{% endfor %}
+          </ul>
+          <p><strong>Your first decision</strong><br>{{ session.first_decision }}</p>
         </div>
       </details>
     {% else %}

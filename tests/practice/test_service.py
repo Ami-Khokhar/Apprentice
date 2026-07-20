@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from apprentice.database import SQLiteDatabase
 from apprentice.incident.generated import GeneratedScenarioSpec
@@ -15,6 +15,7 @@ from apprentice.practice.contracts import (
     EvidenceReference,
     FacilitatorDecision,
     FinalDebrief,
+    LearnerProfile,
 )
 from apprentice.practice.service import (
     DEFAULT_PRACTICE_MODEL,
@@ -127,6 +128,52 @@ def test_start_uses_one_terra_generator_without_authored_catalog() -> None:
     assert agent.output_type is GeneratedScenarioSpec
     assert "authored_catalog" not in raw_prompt
     assert json.loads(raw_prompt)["prior_situations_to_avoid"] == []
+
+
+def test_start_persists_and_prompts_for_selected_difficulty() -> None:
+    runner = FakeRunner([generated_spec()])
+    service = PracticeService(runner=runner)
+
+    session = service.start("software operations", difficulty_level=10)
+
+    assert session.profile.difficulty_level == 10
+    calibration = json.loads(runner.calls[0][1])["difficulty_calibration"]
+    assert calibration["selected_level"] == 10
+    assert "CTO-level" in calibration["learner_experience"]
+    assert "Do not test expertise above the selected level" in calibration["instruction"]
+
+
+def test_generation_prompt_keeps_language_clear_without_revealing_the_decision() -> None:
+    runner = FakeRunner([generated_spec()])
+    service = PracticeService(runner=runner)
+
+    service.start("software operations", difficulty_level=10)
+
+    prompt = json.loads(runner.calls[0][1])
+    readability = prompt["readability_contract"]
+    assert "immediate problem in the first sentence" in readability["briefing"]
+    assert "one fact in each sentence" in readability["briefing"]
+    assert "define it briefly" in readability["terminology"]
+    assert "Do not combine multiple questions" in readability["first_decision"]
+    assert "not use harder English" in readability["difficulty_independence"]
+    assert "not from difficult wording" in prompt["difficulty_calibration"]["instruction"]
+
+
+@pytest.mark.parametrize("difficulty_level", [0, 11])
+def test_start_rejects_difficulty_outside_scale(difficulty_level: int) -> None:
+    runner = FakeRunner([generated_spec()])
+    service = PracticeService(runner=runner)
+
+    with pytest.raises(ValidationError):
+        service.start("software operations", difficulty_level=difficulty_level)
+
+    assert runner.calls == []
+
+
+def test_legacy_learner_profile_defaults_to_beginner_difficulty() -> None:
+    profile = LearnerProfile.model_validate({"field": "software operations"})
+
+    assert profile.difficulty_level == 1
 
 
 def test_duplicate_generation_retries_for_field_when_work_context_changes(

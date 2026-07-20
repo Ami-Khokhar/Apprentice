@@ -16,6 +16,7 @@ class PracticeModel(BaseModel):
 class LearnerProfile(PracticeModel):
     field: str = Field(min_length=1, max_length=240)
     work_context: str | None = Field(default=None, max_length=4_000)
+    difficulty_level: int = Field(default=1, ge=1, le=10)
 
 
 class ScenarioBlueprint(PracticeModel):

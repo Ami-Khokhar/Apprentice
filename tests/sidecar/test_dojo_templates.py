@@ -33,7 +33,7 @@ def _session() -> dict[str, object]:
             {"time": "18:42", "label": "Worker leases stopped releasing"},
         ),
         "role": "You are the incident lead.",
-        "constraint": "Protect active checkouts.",
+        "constraints": ("Protect active checkouts.", "Avoid duplicate work."),
         "first_decision": "What will you do first?",
         "situational_update": "The queue continues to climb.",
         "latest_turn": assessment,
@@ -51,6 +51,38 @@ def test_practice_template_renders_latest_coaching_and_collapses_history() -> No
     assert "queue_depth" in html
     assert "<details class=\"prior-turns\">" in html
     assert "Commit decision" in html
+    assert "The queue continues to climb." in html
+    assert "Write what you would do first and why." not in html
+
+
+def test_briefing_uses_clear_labels_and_one_first_decision_prompt() -> None:
+    session = _session()
+    session["stage"] = "briefing"
+    session["latest_turn"] = None
+    session["prior_turns"] = ()
+    session["situational_update"] = None
+    session["timeline"] = (
+        {
+            "time": "T-15m",
+            "label": "Worker leases stopped releasing",
+            "detail": "Healthy replacement workers cannot start.",
+        },
+    )
+
+    html = _environment().get_template("dojo_practice.html").render(session=session)
+
+    assert '<h2 class="briefing-section-title" id="what-happened-title">What happened</h2>' in html
+    assert 'aria-labelledby="what-happened-title"' in html
+    assert "Your role" in html
+    assert "What matters now" in html
+    assert "<li>Protect active checkouts.</li>" in html
+    assert "<li>Avoid duplicate work.</li>" in html
+    assert "Protect active checkouts. · Avoid duplicate work." not in html
+    assert "Healthy replacement workers cannot start." in html
+    assert html.count("What will you do first?") == 1
+    assert "What would you do next—and why?" not in html
+    assert "Write what you would do first and why." in html
+    assert html.count(str(session["summary"])) == 1
 
 
 def test_error_template_uses_calm_return_action_contract() -> None:
@@ -74,6 +106,11 @@ def test_entry_template_keeps_progressive_form_contract() -> None:
     assert 'method="post" action="/practice"' in html
     assert 'name="field"' in html
     assert 'name="work_description"' in html
+    assert 'name="difficulty_level"' in html
+    assert 'value="1" selected' in html
+    assert 'value="10"' in html
+    assert "no practical experience" in html
+    assert "~15 years" in html
     assert "Enter the dojo" in html
     assert 'data-loading-title="Preparing your situation"' in html
 

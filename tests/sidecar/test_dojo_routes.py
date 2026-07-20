@@ -103,17 +103,19 @@ def _session(*, completed: bool = False) -> PracticeSession:
 class FakePracticeService:
     def __init__(self) -> None:
         self.session = _session()
-        self.start_args: tuple[str, str | None] | None = None
+        self.start_args: tuple[str, str | None, int] | None = None
         self.response: str | None = None
         self.fail_response = False
         self.not_ready = False
         self.start_error: Exception | None = None
         self.respond_error: Exception | None = None
 
-    def start(self, field: str, work_context: str | None = None) -> PracticeSession:
+    def start(
+        self, field: str, work_context: str | None = None, difficulty_level: int = 1
+    ) -> PracticeSession:
         if self.start_error is not None:
             raise self.start_error
-        self.start_args = (field, work_context)
+        self.start_args = (field, work_context, difficulty_level)
         return self.session
 
     def get_session(self, session_id: str) -> PracticeSession:
@@ -186,13 +188,32 @@ def test_practice_form_starts_session_and_redirects_to_briefing(tmp_path) -> Non
 
     response = client.post(
         "/practice",
-        data={"field": " Software operations ", "work_description": " On-call engineer "},
+        data={
+            "field": " Software operations ",
+            "work_description": " On-call engineer ",
+            "difficulty_level": "7",
+        },
         follow_redirects=False,
     )
 
     assert response.status_code == 303
     assert response.headers["location"] == "/practice/practice-1"
-    assert service.start_args == ("Software operations", "On-call engineer")
+    assert service.start_args == ("Software operations", "On-call engineer", 7)
+
+
+@pytest.mark.parametrize("difficulty_level", [0, 11])
+def test_practice_form_rejects_difficulty_outside_scale(
+    tmp_path, difficulty_level: int
+) -> None:
+    client, service = _client(tmp_path)
+
+    response = client.post(
+        "/practice",
+        data={"field": "Software operations", "difficulty_level": str(difficulty_level)},
+    )
+
+    assert response.status_code == 422
+    assert service.start_args is None
 
 
 def test_practice_page_adapts_typed_session_for_minimal_template(tmp_path) -> None:
@@ -203,7 +224,41 @@ def test_practice_page_adapts_typed_session_for_minimal_template(tmp_path) -> No
     assert response.status_code == 200
     assert "The queue is climbing" in response.text
     assert "Checkout jobs are timing out" in response.text
-    assert "What would you do next" in response.text
+    assert "Your first decision" in response.text
+    assert "What will you do first, and why?" in response.text
+    assert "Protect active checkouts · Avoid duplicate work" not in response.text
+
+
+def test_practice_context_structures_timeline_and_constraints() -> None:
+    session = _session().model_copy(
+        update={
+            "scenario": _session().scenario.model_copy(
+                update={
+                    "how_it_developed": (
+                        "T-15m · Forecast published: The forecast moved outside its usual range.",
+                        "Legacy event without generated structure",
+                    )
+                }
+            )
+        }
+    )
+
+    context = _practice_page_context(session)
+
+    assert context["timeline"] == [
+        {
+            "time": "T-15m",
+            "label": "Forecast published",
+            "detail": "The forecast moved outside its usual range.",
+        },
+        {
+            "time": "02",
+            "label": "Legacy event without generated structure",
+            "detail": None,
+        },
+    ]
+    assert context["constraints"] == ["Protect active checkouts", "Avoid duplicate work"]
+    assert "constraint" not in context
 
 
 def test_free_text_response_redirects_to_debrief_when_world_concludes(tmp_path) -> None:
@@ -225,18 +280,37 @@ def test_json_practice_contract_uses_same_service(tmp_path) -> None:
 
     created = client.post(
         "/api/practice/sessions",
-        json={"field": "Product management", "work_description": "B2B launches"},
+        json={
+            "field": "Product management",
+            "work_description": "B2B launches",
+            "difficulty_level": 4,
+        },
     )
     fetched = client.get("/api/practice/sessions/practice-1")
     debrief = client.get("/api/practice/sessions/practice-1/debrief")
 
     assert created.status_code == 201
     assert created.json()["scenario"]["title"] == "The queue is climbing"
-    assert service.start_args == ("Product management", "B2B launches")
+    assert service.start_args == ("Product management", "B2B launches", 4)
     assert fetched.status_code == 200
     assert fetched.json()["profile"]["field"] == "Software operations"
     assert debrief.status_code == 200
     assert debrief.json()["carry_forward"] == "Contain before you repair."
+
+
+@pytest.mark.parametrize("difficulty_level", [0, 11])
+def test_json_practice_contract_rejects_difficulty_outside_scale(
+    tmp_path, difficulty_level: int
+) -> None:
+    client, service = _client(tmp_path)
+
+    response = client.post(
+        "/api/practice/sessions",
+        json={"field": "Software operations", "difficulty_level": difficulty_level},
+    )
+
+    assert response.status_code == 422
+    assert service.start_args is None
 
 
 def test_practice_context_exposes_assessment_without_private_reasoning() -> None:

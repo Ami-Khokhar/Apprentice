@@ -33,6 +33,28 @@ TOutput = TypeVar("TOutput", bound=BaseModel)
 StructuredRunner = Callable[[AgentSpec, str], BaseModel]
 DEFAULT_PRACTICE_MODEL = "gpt-5.6-terra"
 MAX_GENERATION_ATTEMPTS = 3
+DIFFICULTY_DESCRIPTIONS = (
+    "Topic knowledge but no practical field experience; use one clear problem, direct evidence, "
+    "low ambiguity, and forgiving consequences.",
+    "A novice with limited guided exposure; use a contained problem, visible signals, and light "
+    "time pressure.",
+    "An early practitioner who can handle routine work with support; introduce one meaningful "
+    "tradeoff and a small amount of ambiguity.",
+    "A developing independent practitioner; require prioritization across a few signals and "
+    "moderate operational pressure.",
+    "A competent mid-level practitioner; use interacting concerns, incomplete evidence, and "
+    "realistic stakeholder pressure.",
+    "A strong senior practitioner; require independent judgment across multiple systems or teams "
+    "with consequential tradeoffs.",
+    "A seasoned lead; use substantial ambiguity, competing stakeholders, and second-order effects.",
+    "A staff or principal-level leader; require cross-team systems thinking, strategic tradeoffs, "
+    "and incident-tested judgment.",
+    "An executive technical leader; use organization-wide consequences, sparse signals, and "
+    "high-stakes decisions under pressure.",
+    "A CTO-level engineer with roughly 15 years of experience and extensive real-incident "
+    "leadership; demand expert judgment across technical, organizational, business, and long-term "
+    "risk dimensions.",
+)
 
 
 class PracticeSessionNotFoundError(KeyError):
@@ -149,10 +171,13 @@ class PracticeService:
         self._store = store or (SQLiteSessionStore(database) if database else MemorySessionStore())
         self._generated_runtime = generated_runtime or GeneratedScenarioRuntime()
 
-    def start(self, field: str, work_context: str | None = None) -> PracticeSession:
+    def start(
+        self, field: str, work_context: str | None = None, difficulty_level: int = 1
+    ) -> PracticeSession:
         profile = LearnerProfile(
             field=field.strip(),
             work_context=work_context.strip() if work_context and work_context.strip() else None,
+            difficulty_level=difficulty_level,
         )
         history = self._store.generated_history(profile)
         spec: GeneratedScenarioSpec | None = None
@@ -355,6 +380,49 @@ class PracticeService:
         return json.dumps(
             {
                 "learner_profile": profile.model_dump(mode="json"),
+                "difficulty_calibration": {
+                    "selected_level": profile.difficulty_level,
+                    "learner_experience": DIFFICULTY_DESCRIPTIONS[
+                        profile.difficulty_level - 1
+                    ],
+                    "scale_anchors": {
+                        "1": (
+                            "Topic knowledge, no practical field experience; keep the situation "
+                            "approachable and teachable."
+                        ),
+                        "10": (
+                            "CTO-level, roughly 15 years of experience, with extensive real-life "
+                            "incident leadership; make the situation appropriately demanding."
+                        ),
+                    },
+                    "instruction": (
+                        "Calibrate the scenario to this exact level. Increase interacting systems, "
+                        "ambiguity, time pressure, stakeholder conflict, consequence severity, "
+                        "and required autonomy gradually from level 1 to level 10. Do not test "
+                        "expertise above the selected level. Keep the language clear at every "
+                        "difficulty level; difficulty must come from the judgment required, not "
+                        "from difficult wording."
+                    ),
+                },
+                "readability_contract": {
+                    "briefing": (
+                        "State the immediate problem in the first sentence. Use plain, direct "
+                        "English and short sentences. Put one fact in each sentence."
+                    ),
+                    "terminology": (
+                        "Replace jargon and acronyms with common words. If a technical term is "
+                        "necessary, define it briefly the first time it appears."
+                    ),
+                    "focus": "Remove scene-setting that does not help the learner decide.",
+                    "first_decision": (
+                        "Ask one direct question. Do not combine multiple questions and do not "
+                        "suggest or reveal the correct action."
+                    ),
+                    "difficulty_independence": (
+                        "Apply these readability rules at every difficulty level. More advanced "
+                        "scenarios may require harder judgment, but must not use harder English."
+                    ),
+                },
                 "generation_nonce": nonce,
                 "attempt": attempt + 1,
                 "validation_contract": {
