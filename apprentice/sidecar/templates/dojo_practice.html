@@ -146,6 +146,19 @@
       </button>
     </form>
 
+    {% if session.can_stop|default(false) %}
+      <form
+        class="stop-simulation-form"
+        method="post"
+        action="/practice/{{ session.id }}/stop"
+        data-loading-title="Preparing your review"
+        data-loading-detail="The guide is reviewing only the decisions you have made so far."
+      >
+        <button class="secondary-action" type="submit">End simulation and review</button>
+        <p>This is final. Apprentice will score the decisions you have made so far.</p>
+      </form>
+    {% endif %}
+
     {% if session.stage == "decision" %}
       <details class="briefing-review">
         <summary>Review the briefing</summary>

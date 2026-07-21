@@ -17,7 +17,7 @@ from apprentice.practice.codex_runner import (
     CodexStructuredRunner,
     CodexTimeoutError,
 )
-from apprentice.practice.contracts import FacilitatorDecision
+from apprentice.practice.contracts import FacilitatorDecision, FinalDebrief
 
 
 class Result(BaseModel):
@@ -185,6 +185,16 @@ def test_facilitator_schema_requires_nullable_fields_and_assessment_evidence() -
     coaching_variants = schema["properties"]["coaching_question"]["anyOf"]
     assert {variant.get("type") for variant in action_variants} == {"string", "null"}
     assert {variant.get("type") for variant in coaching_variants} == {"string", "null"}
+
+
+def test_final_debrief_schema_requires_nullable_score_fields_for_legacy_compatibility() -> None:
+    schema = FinalDebrief.model_json_schema()
+
+    assert {"score", "score_rationale"} <= set(schema["required"])
+    assert {variant.get("type") for variant in schema["properties"]["score"]["anyOf"]} == {
+        "integer",
+        "null",
+    }
 
 
 def test_missing_cli_has_actionable_safe_error() -> None:

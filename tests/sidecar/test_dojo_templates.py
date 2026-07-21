@@ -38,6 +38,8 @@ def _session() -> dict[str, object]:
         "situational_update": "The queue continues to climb.",
         "latest_turn": assessment,
         "prior_turns": (assessment,),
+        "can_stop": True,
+        "stopped_early": False,
     }
 
 
@@ -51,6 +53,8 @@ def test_practice_template_renders_latest_coaching_and_collapses_history() -> No
     assert "queue_depth" in html
     assert "<details class=\"prior-turns\">" in html
     assert "Commit decision" in html
+    assert "End simulation and review" in html
+    assert "This is final" in html
     assert "The queue continues to climb." in html
     assert "Write what you would do first and why." not in html
 
@@ -61,6 +65,7 @@ def test_briefing_uses_clear_labels_and_one_first_decision_prompt() -> None:
     session["latest_turn"] = None
     session["prior_turns"] = ()
     session["situational_update"] = None
+    session["can_stop"] = False
     session["timeline"] = (
         {
             "time": "T-15m",
@@ -83,6 +88,7 @@ def test_briefing_uses_clear_labels_and_one_first_decision_prompt() -> None:
     assert "What would you do next—and why?" not in html
     assert "Write what you would do first and why." in html
     assert html.count(str(session["summary"])) == 1
+    assert "End simulation and review" not in html
 
 
 def test_error_template_uses_calm_return_action_contract() -> None:
@@ -98,6 +104,29 @@ def test_error_template_uses_calm_return_action_contract() -> None:
     assert "The session may have expired" in html
     assert 'href="/"' in html
     assert "Return to the dojo" in html
+
+
+def test_debrief_template_prominently_scores_a_manually_stopped_session() -> None:
+    debrief = {
+        "score": 74,
+        "score_rationale": "You contained demand but did not verify the lease failure.",
+        "what_you_saw": ("The queue was growing.",),
+        "what_you_missed": ("The lease pattern.",),
+        "strong_decisions": ("You limited new dispatches.",),
+        "risky_assumptions": ("Workers were merely slow.",),
+        "stronger_path": ("Pause dispatch.", "Inspect leases."),
+        "expert_approach": "Stabilize, verify, then recover.",
+        "carry_forward": "Contain before you repair.",
+        "evidence": ({"source": "metric", "ref": "queue_depth"},),
+    }
+
+    html = _environment().get_template("dojo_debrief.html").render(
+        session={"stopped_early": True}, debrief=debrief
+    )
+
+    assert "74<span>/100</span>" in html
+    assert debrief["score_rationale"] in html
+    assert "before ending the simulation" in html
 
 
 def test_entry_template_keeps_progressive_form_contract() -> None:

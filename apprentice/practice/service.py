@@ -243,6 +243,8 @@ class PracticeService:
             raise InvalidPracticeResponseError("A response cannot exceed 8000 characters")
         if session.debrief is not None:
             raise InvalidPracticeResponseError("This practice session has already been debriefed")
+        if session.manually_stopped:
+            raise InvalidPracticeResponseError("This practice session has already been ended")
         if session.world.get("completed") or session.world.get("terminal"):
             raise InvalidPracticeResponseError("This practice scenario has already concluded")
 
@@ -296,16 +298,42 @@ class PracticeService:
         self._store.save(updated)
         return updated
 
+    def stop(self, session_id: str) -> PracticeSession:
+        session = self.get_session(session_id)
+        if session.manually_stopped:
+            return session
+        if session.debrief is not None:
+            raise InvalidPracticeResponseError("This practice session has already been debriefed")
+        if session.world.get("completed") or session.world.get("terminal"):
+            return session
+        if not session.turns:
+            raise InvalidPracticeResponseError(
+                "Make at least one decision before ending the simulation"
+            )
+        updated = session.model_copy(
+            update={"manually_stopped": True, "updated_at": time.time()}
+        )
+        self._store.save(updated)
+        return updated
+
     def get_debrief(self, session_id: str) -> FinalDebrief:
         session = self.get_session(session_id)
         if session.debrief is not None:
             return session.debrief
-        if not session.world.get("completed") and not session.world.get("terminal"):
+        if (
+            not session.world.get("completed")
+            and not session.world.get("terminal")
+            and not session.manually_stopped
+        ):
             raise PracticeNotReadyForDebriefError(
                 "The scenario must reach recovery or terminal escalation before debrief"
             )
         debrief = self._run(self._debrief_agent(), self._debrief_prompt(session), FinalDebrief)
-        self._validate_evidence(debrief.evidence, session.world)
+        if debrief.score is None or debrief.score_rationale is None:
+            raise InvalidPracticeResponseError("The new debrief did not include a score")
+        self._validate_evidence(
+            debrief.evidence, session.world, allowed=self._debrief_evidence(session.world)
+        )
         updated = session.model_copy(update={"debrief": debrief, "updated_at": time.time()})
         self._store.save(updated)
         return debrief
@@ -354,7 +382,13 @@ class PracticeService:
                 "Produce a concise professional debrief grounded only in the canonical world, its "
                 "deterministic rubric, and the learner transcript. Separate observed strengths "
                 "from missed evidence and risky assumptions. Offer a better ordered decision path. "
-                "Cite only IDs present in the payload; do not invent causes or outcomes."
+                "Give a 0-100 score and concise rationale against the frozen weighted rubric. "
+                "Score only decisions actually recorded, completed actions, revealed evidence, "
+                "current metrics, and the achieved outcome. Never award credit for available or "
+                "future actions. Future actions may appear only in the better path or expert "
+                "recommendation. If the learner stopped early, do not invent unattempted "
+                "decisions; incomplete rubric achievement may limit the score. Cite only IDs "
+                "allowed by the scoring evidence payload; do not invent causes or outcomes."
             ),
             model=self._model,
             output_type=FinalDebrief,
@@ -497,27 +531,55 @@ class PracticeService:
 
     @staticmethod
     def _debrief_prompt(session: PracticeSession) -> str:
+        ending_reason = (
+            "manual_stop"
+            if session.manually_stopped
+            else "recovered"
+            if session.world.get("completed")
+            else "terminal_escalation"
+        )
         return json.dumps(
             {
                 "learner_profile": session.profile.model_dump(mode="json"),
                 "scenario_framing": session.scenario.model_dump(mode="json"),
                 "canonical_world": session.world,
-                "allowed_evidence": PracticeService._allowed_evidence(session.world),
+                "ending_reason": ending_reason,
+                "weighted_rubric": [
+                    criterion.model_dump(mode="json")
+                    for criterion in session.generated_spec.rubric
+                ],
+                "scoring_evidence": PracticeService._debrief_evidence(session.world),
                 "learner_turns": [turn.model_dump(mode="json") for turn in session.turns],
+                "scoring_contract": (
+                    "Return a 0-100 score and concise score_rationale. Use only the frozen "
+                    "weighted rubric, learner transcript, completed actions, revealed artifacts, "
+                    "recorded events, current metrics, and outcome. Available or future actions "
+                    "earn no credit and may be mentioned only in better_path or expert_approach."
+                ),
             },
             sort_keys=True,
         )
 
     @staticmethod
     def _validate_evidence(
-        references: tuple[EvidenceReference, ...], world: dict[str, Any]
+        references: tuple[EvidenceReference, ...],
+        world: dict[str, Any],
+        *,
+        allowed: dict[str, list[str]] | None = None,
     ) -> None:
-        allowed = PracticeService._allowed_evidence(world)
+        allowed = allowed or PracticeService._allowed_evidence(world)
         for reference in references:
             if reference.ref not in allowed[reference.source]:
                 raise InvalidPracticeResponseError(
                     f"Facilitator cited unknown {reference.source}: {reference.ref}"
                 )
+
+    @staticmethod
+    def _debrief_evidence(world: dict[str, Any]) -> dict[str, list[str]]:
+        allowed = PracticeService._allowed_evidence(world)
+        allowed["action"] = sorted(str(item) for item in world.get("completed_actions", []))
+        allowed["artifact"] = sorted(str(item) for item in world.get("revealed_artifacts", []))
+        return allowed
 
     @staticmethod
     def _allowed_evidence(world: dict[str, Any]) -> dict[str, list[str]]:

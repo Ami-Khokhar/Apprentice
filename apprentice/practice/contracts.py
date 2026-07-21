@@ -72,6 +72,8 @@ class PracticeTurn(PracticeModel):
 
 
 class FinalDebrief(PracticeModel):
+    score: int | None = Field(ge=0, le=100)
+    score_rationale: str | None = Field(min_length=1, max_length=500)
     noticed: tuple[str, ...] = Field(min_length=1, max_length=6)
     missed: tuple[str, ...] = Field(min_length=1, max_length=6)
     strong_decisions: tuple[str, ...] = Field(min_length=1, max_length=6)
@@ -80,6 +82,19 @@ class FinalDebrief(PracticeModel):
     expert_approach: str = Field(min_length=1, max_length=1_500)
     carry_forward: str = Field(min_length=1, max_length=500)
     evidence: tuple[EvidenceReference, ...] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_unscored_debriefs(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            value = {"score": None, "score_rationale": None, **value}
+        return value
+
+    @model_validator(mode="after")
+    def keep_score_and_rationale_together(self) -> FinalDebrief:
+        if (self.score is None) != (self.score_rationale is None):
+            raise ValueError("score and score_rationale must both be present or absent")
+        return self
 
 
 class PracticeSession(PracticeModel):
@@ -91,6 +106,7 @@ class PracticeSession(PracticeModel):
     runtime_kind: Literal["generated"] = "generated"
     generated_spec: GeneratedScenarioSpec
     turns: tuple[PracticeTurn, ...] = ()
+    manually_stopped: bool = False
     debrief: FinalDebrief | None = None
     created_at: float
     updated_at: float

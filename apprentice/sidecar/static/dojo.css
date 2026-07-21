@@ -567,6 +567,37 @@ textarea:focus {
   text-underline-offset: 0.3rem;
 }
 
+.stop-simulation-form {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.secondary-action {
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--ink-muted);
+  border-radius: 2px;
+  color: var(--sumi);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.secondary-action:hover {
+  border-color: var(--sumi);
+  background: rgb(255 255 255 / 18%);
+}
+
+.secondary-action:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 4px;
+}
+
+.stop-simulation-form p {
+  margin: 0.55rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
 .briefing-review {
   margin-top: 1.65rem;
   color: var(--ink-muted);
@@ -617,6 +648,34 @@ textarea:focus {
 
 .debrief-sections {
   border-bottom: 1px solid var(--hairline);
+}
+
+.debrief-score {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 1.5rem 1rem;
+  border-bottom: 1px solid var(--vermilion);
+  text-align: center;
+}
+
+.debrief-score p {
+  max-width: 42rem;
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.debrief-score strong {
+  color: var(--vermilion);
+  font-family: var(--serif);
+  font-size: clamp(3rem, 7vw, 5rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.debrief-score strong span {
+  color: var(--ink-muted);
+  font-size: 0.3em;
 }
 
 .debrief-section {

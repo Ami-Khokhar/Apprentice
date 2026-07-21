@@ -31,7 +31,7 @@ from apprentice.practice.service import PracticeService
 from apprentice.sidecar.app import _practice_page_context, build_app, build_sidecar
 
 
-def _session(*, completed: bool = False) -> PracticeSession:
+def _session(*, completed: bool = False, with_turn: bool = False) -> PracticeSession:
     now = time.time()
     turns = (
         (
@@ -49,7 +49,7 @@ def _session(*, completed: bool = False) -> PracticeSession:
                 outcome="recovered" if completed else "active",
             ),
         )
-        if completed
+        if completed or with_turn
         else ()
     )
     return PracticeSession.model_construct(
@@ -134,11 +134,20 @@ class FakePracticeService:
         self.session = _session(completed=True)
         return self.session
 
+    def stop(self, session_id: str) -> PracticeSession:
+        assert session_id == self.session.id
+        if not self.session.turns:
+            raise InvalidPracticeResponseError("Make at least one decision first")
+        self.session = self.session.model_copy(update={"manually_stopped": True})
+        return self.session
+
     def get_debrief(self, session_id: str) -> FinalDebrief:
         assert session_id == self.session.id
         if self.not_ready:
             raise PracticeNotReadyForDebriefError("The scenario is still active")
         return FinalDebrief(
+            score=74,
+            score_rationale="You contained demand but did not verify the lease failure.",
             noticed=("The queue was still growing.",),
             missed=("The lease expiry pattern.",),
             strong_decisions=("Limited new dispatches.",),
@@ -296,6 +305,26 @@ def test_json_practice_contract_uses_same_service(tmp_path) -> None:
     assert fetched.json()["profile"]["field"] == "Software operations"
     assert debrief.status_code == 200
     assert debrief.json()["carry_forward"] == "Contain before you repair."
+    assert debrief.json()["score"] == 74
+
+
+def test_manual_stop_routes_freeze_and_redirect_to_debrief(tmp_path) -> None:
+    client, service = _client(tmp_path)
+    service.session = _session(with_turn=True)
+
+    html = client.post(
+        "/practice/practice-1/stop", follow_redirects=False
+    )
+
+    assert html.status_code == 303
+    assert html.headers["location"] == "/practice/practice-1/debrief"
+    assert service.session.manually_stopped is True
+
+    service.session = _session(with_turn=True)
+    api = client.post("/api/practice/sessions/practice-1/stop")
+
+    assert api.status_code == 200
+    assert api.json()["manually_stopped"] is True
 
 
 @pytest.mark.parametrize("difficulty_level", [0, 11])
@@ -336,6 +365,28 @@ def test_practice_context_exposes_assessment_without_private_reasoning() -> None
     }
     assert len(context["prior_turns"]) == 1
     assert "private_reasoning" not in context["latest_turn"]
+
+
+def test_practice_context_only_offers_manual_stop_during_active_session() -> None:
+    active = _practice_page_context(_session(with_turn=True))
+    completed = _practice_page_context(_session(completed=True))
+    terminal_session = _session(with_turn=True).model_copy(
+        update={
+            "world": {
+                **_session(with_turn=True).world,
+                "terminal": True,
+                "outcome": "terminal_escalation",
+            }
+        }
+    )
+    stopped = _practice_page_context(
+        _session(with_turn=True).model_copy(update={"manually_stopped": True})
+    )
+
+    assert active["can_stop"] is True
+    assert completed["can_stop"] is False
+    assert _practice_page_context(terminal_session)["can_stop"] is False
+    assert stopped["can_stop"] is False
 
 
 def test_html_practice_errors_render_calm_recovery_page(tmp_path) -> None:

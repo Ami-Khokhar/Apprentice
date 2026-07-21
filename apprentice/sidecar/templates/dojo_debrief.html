@@ -9,7 +9,16 @@
   <article class="dojo-view debrief-view" aria-labelledby="debrief-title">
     <header class="view-heading debrief-heading">
       <h1 id="debrief-title">Your judgment under pressure</h1>
+      {% if session.stopped_early %}<p>Review of the decisions you made before ending the simulation.</p>{% endif %}
     </header>
+
+    {% if debrief.score is not none %}
+      <section class="debrief-score" aria-labelledby="score-title">
+        <p id="score-title">Your score</p>
+        <strong>{{ debrief.score }}<span>/100</span></strong>
+        <p>{{ debrief.score_rationale }}</p>
+      </section>
+    {% endif %}
 
     <div class="debrief-sections">
       <section class="debrief-section" aria-labelledby="saw-title">

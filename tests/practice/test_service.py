@@ -16,6 +16,7 @@ from apprentice.practice.contracts import (
     FacilitatorDecision,
     FinalDebrief,
     LearnerProfile,
+    PracticeSession,
 )
 from apprentice.practice.service import (
     DEFAULT_PRACTICE_MODEL,
@@ -90,6 +91,8 @@ def decision(
 
 def debrief() -> FinalDebrief:
     return FinalDebrief(
+        score=82,
+        score_rationale="The response contained the issue and verified the correction.",
         noticed=("The forecast required verification.",),
         missed=("The partner deadline added pressure.",),
         strong_decisions=("You inspected the pipeline.",),
@@ -330,3 +333,58 @@ def test_debrief_requires_a_concluded_generated_world() -> None:
 
     with pytest.raises(PracticeNotReadyForDebriefError):
         service.get_debrief(session.id)
+
+
+def test_manual_stop_requires_a_turn_then_freezes_and_debriefs_current_state() -> None:
+    runner = FakeRunner(
+        [
+            generated_spec(),
+            decision(
+                "inspect-pipeline",
+                excerpt="Inspect the pipeline",
+                evidence=(EvidenceReference(source="action", ref="inspect-pipeline"),),
+            ),
+            debrief(),
+        ]
+    )
+    service = PracticeService(runner=runner)
+    session = service.start("analyst")
+
+    with pytest.raises(InvalidPracticeResponseError, match="at least one decision"):
+        service.stop(session.id)
+
+    progressed = service.respond(session.id, "Inspect the pipeline first.")
+    stopped = service.stop(session.id)
+
+    assert stopped.manually_stopped is True
+    assert stopped.world == progressed.world
+    with pytest.raises(InvalidPracticeResponseError, match="already been ended"):
+        service.respond(session.id, "Correct and reforecast now.")
+
+    result = service.get_debrief(session.id)
+    assert result.score == 82
+    prompt = json.loads(runner.calls[-1][1])
+    assert prompt["ending_reason"] == "manual_stop"
+    assert prompt["scoring_evidence"]["action"] == ["inspect-pipeline"]
+    assert "correct-and-reforecast" not in prompt["scoring_evidence"]["action"]
+    assert "available or future actions earn no credit" in prompt["scoring_contract"].lower()
+
+
+def test_legacy_session_and_debrief_load_without_manual_stop_or_score() -> None:
+    session = PracticeSession.model_validate(
+        {
+            **PracticeService(runner=FakeRunner([generated_spec()]))
+            .start("analyst")
+            .model_dump(mode="json", exclude={"manually_stopped", "debrief"}),
+            "debrief": {
+                key: value
+                for key, value in debrief().model_dump(mode="json").items()
+                if key not in {"score", "score_rationale"}
+            },
+        }
+    )
+
+    assert session.manually_stopped is False
+    assert session.debrief is not None
+    assert session.debrief.score is None
+    assert session.debrief.score_rationale is None

@@ -171,6 +171,11 @@ def build_app(
         session = service.respond(session_id, body.response.strip())
         return session.model_dump(mode="json")
 
+    @app.post("/api/practice/sessions/{session_id}/stop")
+    def stop_practice_session(session_id: str) -> dict[str, object]:
+        session = service.stop(session_id)
+        return session.model_dump(mode="json")
+
     @app.get("/api/practice/sessions/{session_id}/debrief")
     def get_practice_debrief(session_id: str) -> dict[str, object]:
         return service.get_debrief(session_id).model_dump(mode="json")
@@ -211,6 +216,13 @@ def build_app(
             else f"/practice/{session_id}"
         )
         return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/practice/{session_id}/stop")
+    def stop_practice(session_id: str) -> RedirectResponse:
+        service.stop(session_id)
+        return RedirectResponse(
+            url=f"/practice/{session_id}/debrief", status_code=status.HTTP_303_SEE_OTHER
+        )
 
     @app.get("/practice/{session_id}/debrief")
     def practice_debrief_page(request: Request, session_id: str):
@@ -311,6 +323,14 @@ def _practice_page_context(session: PracticeSession) -> dict[str, object]:
         "situational_update": situational_update,
         "latest_turn": presented_turns[-1] if presented_turns else None,
         "prior_turns": presented_turns[:-1],
+        "can_stop": (
+            bool(turns)
+            and not raw["manually_stopped"]
+            and raw["debrief"] is None
+            and not world.get("completed")
+            and not world.get("terminal")
+        ),
+        "stopped_early": raw["manually_stopped"],
     }
 
 
@@ -344,6 +364,8 @@ def _practice_turn_context(turn: dict[str, object]) -> dict[str, object]:
 def _debrief_page_context(debrief: FinalDebrief) -> dict[str, object]:
     raw = debrief.model_dump(mode="json")
     return {
+        "score": raw["score"],
+        "score_rationale": raw["score_rationale"],
         "what_you_saw": raw["noticed"],
         "what_you_missed": raw["missed"],
         "strong_decisions": raw["strong_decisions"],
