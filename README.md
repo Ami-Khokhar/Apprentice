@@ -86,7 +86,7 @@ exercise.
 
 ## Product experience
 
-The learner moves through four focused screens:
+The learner moves through five focused screens:
 
 1. **Entry** — describe the field and optional work context.
 2. **Briefing** — understand how the situation developed, the current
@@ -94,6 +94,9 @@ The learner moves through four focused screens:
 3. **Practice** — respond in free text and see the situation evolve.
 4. **Debrief** — review what was noticed, what was missed, and a stronger
    decision sequence.
+5. **My practice** — revisit an evidence-backed portfolio of encountered,
+   resolved, and reviewed problems, including the learner's original proposals,
+   executed actions, and observable outcomes.
 
 While Terra generates a situation or evaluates a decision, a branded loading
 layer overlays only the main screen. The underlying content stays visible but
@@ -210,7 +213,7 @@ The current application is intentionally small:
 - `apprentice/incident/generated.py` — scenario validation, novelty detection,
   deterministic execution, and restoration.
 - `apprentice/practice/` — typed contracts, Codex runner, orchestration, and
-  session persistence.
+  session persistence, including the local judgment-profile projection.
 - `apprentice/sidecar/` — FastAPI routes, dojo templates, CSS, and loading
   behavior.
 - `apprentice/database.py` — file-backed SQLite lifecycle and transactions.
@@ -245,6 +248,82 @@ No sample dataset, seeded account, or separate application service is required
 beyond the authenticated Codex CLI. Practice sessions are stored locally in
 `apprentice.db`.
 
+### Private Observer dashboard
+
+The Observer is a separate, owner-only local dashboard for inspecting observable
+model inputs, structured outputs, retries, validation results, selected actions,
+world consequences, metric changes, and debrief scores. It is disabled by default
+and is not linked from the learner interface.
+
+```bash
+export APPRENTICE_OBSERVER_ENABLED=true
+export APPRENTICE_OBSERVER_TOKEN="$(openssl rand -hex 32)"
+export APPRENTICE_TRACE_RETENTION_DAYS=30
+# Sensitive: stores prompts, learner text, scenario state, and model outputs locally.
+export APPRENTICE_TRACE_CONTENT=true
+uv run uvicorn apprentice.sidecar.app:build_app --factory --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000/observer` and paste the token from
+`APPRENTICE_OBSERVER_TOKEN`. You can also put it in a URL fragment—never a query
+parameter—by opening `http://127.0.0.1:8000/observer#token=YOUR_TOKEN`. The fragment
+is not sent to the server or included in Uvicorn access logs; the local bootstrap
+exchanges it for an HttpOnly, SameSite=Strict cookie and immediately removes it
+from the address bar.
+
+Local traces are written to `.apprentice/traces.jsonl`. Change the location with
+`APPRENTICE_TRACE_PATH` or the per-record cap with
+`APPRENTICE_TRACE_CONTENT_LIMIT_BYTES` (default 256000). Expired records are
+removed according to `APPRENTICE_TRACE_RETENTION_DAYS` (default 30).
+
+By default, inputs and outputs are represented only by type and serialized size.
+Set `APPRENTICE_TRACE_CONTENT=true` only when you intentionally want prompts,
+learner responses, model outputs, and scenario state stored locally. These can
+contain private professional information. Common secret/authentication fields are
+recursively redacted, but no automatic redactor can recognize every sensitive
+business detail. Keep the server bound to `127.0.0.1`; Observer also rejects
+non-loopback clients and will not start without an owner token.
+
+Observer shows observable decision artifacts, not the model's private hidden
+chain-of-thought. Rejected attempts include the validation reason so generator
+behavior can still be inspected directly.
+
+### Optional model tracing with Langfuse
+
+Apprentice can send each practice operation and its nested Codex generation to
+Langfuse. Tracing is off by default and the base installation does not require the
+Langfuse SDK.
+
+```bash
+uv sync --extra observability --locked
+export APPRENTICE_LANGFUSE_ENABLED=true
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_BASE_URL=https://cloud.langfuse.com
+uv run uvicorn apprentice.sidecar.app:build_app --factory --host 127.0.0.1 --port 8000
+```
+
+The traces group `practice.start`, `practice.respond`, `practice.stop`, and
+`practice.debrief` by Apprentice session ID. Child generation observations show
+the agent, model, output schema, retry metadata, duration/error status, and the
+deterministic action and world result where applicable.
+
+Observer and Langfuse can run together. Enable both sets of environment variables;
+the same operation/generation hierarchy is written locally and sent to Langfuse.
+
+Privacy defaults are deliberately conservative. Without further configuration,
+trace inputs and outputs contain only types and serialized sizes; learner text,
+prompts, and model responses are not recorded. To inspect that content, explicitly
+set `APPRENTICE_TRACE_CONTENT=true`. This sends the full structured prompts, learner
+transcript, scenario state, and structured model outputs to the configured Langfuse
+project. Obvious secret and authentication fields are recursively redacted in both
+modes, and Langfuse credentials are never forwarded to the Codex subprocess.
+
+Only observable inputs, structured final outputs, and deterministic state changes
+can be traced. Apprentice cannot expose a model's private or hidden chain of thought;
+for facilitator turns, the inspectable reasoning is the returned interpretation,
+strength, risk, evidence, and selected action.
+
 ### Suggested judge walkthrough
 
 1. Enter `Site reliability engineer`.
@@ -264,7 +343,7 @@ uv run pytest -q
 ```
 
 The automated suite uses deterministic fake model responses, requires no network
-access, and currently contains 59 passing tests.
+access, and currently contains 90 passing tests.
 
 ## Routes
 
@@ -275,6 +354,13 @@ Learner interface:
 - `GET /practice/{session_id}`
 - `POST /practice/{session_id}/responses`
 - `GET /practice/{session_id}/debrief`
+
+Owner interface (only when explicitly enabled):
+
+- `GET /observer`
+- `POST /api/observer/session`
+- `GET /api/observer/traces`
+- `GET /api/observer/traces/{session_id}`
 
 Equivalent JSON API:
 

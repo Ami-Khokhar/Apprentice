@@ -76,7 +76,11 @@
     {% if session.latest_turn %}
       <section class="turn-coaching" aria-labelledby="turn-coaching-title">
         <h2 id="turn-coaching-title">Your last decision</h2>
+        <p class="eyebrow">Assessment · {{ session.latest_turn.disposition | replace('_', ' ') }}</p>
         <blockquote>“{{ session.latest_turn.response_excerpt }}”</blockquote>
+        {% if session.latest_turn.recognized_intents %}
+          <p><strong>Plan recognized</strong> · {{ session.latest_turn.recognized_intents | join(' · ') }}</p>
+        {% endif %}
         <dl class="assessment-lines">
           <div>
             <dt>Interpretation</dt>
@@ -86,10 +90,10 @@
             <dt>Strength</dt>
             <dd>{{ session.latest_turn.strength }}</dd>
           </div>
-          <div>
-            <dt>Risk</dt>
+          {% if session.latest_turn.risk %}<div>
+            <dt>Remaining risk</dt>
             <dd>{{ session.latest_turn.risk }}</dd>
-          </div>
+          </div>{% endif %}
         </dl>
         {% if session.latest_turn.evidence %}
           <p class="evidence-line turn-evidence">
@@ -111,10 +115,59 @@
               <blockquote>“{{ turn.response_excerpt }}”</blockquote>
               <p><strong>Interpretation</strong> · {{ turn.interpretation }}</p>
               <p><strong>Strength</strong> · {{ turn.strength }}</p>
-              <p><strong>Risk</strong> · {{ turn.risk }}</p>
+              <p><strong>Assessment</strong> · {{ turn.disposition | replace('_', ' ') }}</p>
+              {% if turn.risk %}<p><strong>Remaining risk</strong> · {{ turn.risk }}</p>{% endif %}
             </section>
           {% endfor %}
         </div>
+      </details>
+    {% endif %}
+
+    {% if session.clarifications %}
+      <section class="clarification-history" aria-labelledby="clarification-history-title">
+        <h2 id="clarification-history-title">Situation clarifications</h2>
+        {% for item in session.clarifications %}
+          <article>
+            <p class="clarification-question">You asked · {{ item.question }}</p>
+            <p>{{ item.answer }}</p>
+            {% if item.evidence %}
+              <p class="evidence-line clarification-evidence">
+                <span>Grounded in</span>
+                {% for evidence in item.evidence %}
+                  <span>{{ evidence.source }} · {{ evidence.ref }}</span>{% if not loop.last %}<i aria-hidden="true">/</i>{% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {% if session.can_clarify %}
+      <details class="clarification-panel">
+        <summary>Ask a clarification</summary>
+        <p>Ask about facts already presented. Apprentice will not suggest actions, evaluate choices, or give hints.</p>
+        <form
+          class="dojo-form clarification-form"
+          method="post"
+          action="/practice/{{ session.id }}/clarifications"
+          data-loading-title="Checking the situation"
+          data-loading-detail="Apprentice is answering only from facts already visible to you."
+        >
+          <div class="field-group">
+            <label class="visually-hidden" for="clarification-question">Clarification question</label>
+            <textarea
+              id="clarification-question"
+              name="question"
+              minlength="1"
+              maxlength="2000"
+              rows="3"
+              placeholder="What does this detail mean in the situation?"
+              required
+            ></textarea>
+          </div>
+          <button class="secondary-action" type="submit">Ask Apprentice</button>
+        </form>
       </details>
     {% endif %}
 

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import hmac
+import os
 import re
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Form, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 
 from apprentice.database import SQLiteDatabase
+from apprentice.observability import LocalTraceStore, build_tracer, enabled
 from apprentice.practice import (
     FinalDebrief,
     InvalidPracticeResponseError,
@@ -45,23 +48,60 @@ class PracticeResponseRequest(RequestModel):
     response: str = Field(min_length=1, max_length=8_000, pattern=r".*\S.*")
 
 
+class ClarificationRequest(RequestModel):
+    question: str = Field(min_length=1, max_length=2_000, pattern=r".*\S.*")
+
+
+class JudgmentProfileRequest(RequestModel):
+    display_name: str = Field(min_length=1, max_length=120, pattern=r".*\S.*")
+    headline: str = Field(default="", max_length=240)
+    bio: str = Field(default="", max_length=2_000)
+
+
+class ObserverSessionRequest(RequestModel):
+    token: str = Field(min_length=1, max_length=1_024)
+
+
 def build_app(
     db_path: str | Path | None = None,
     *,
     database: SQLiteDatabase | None = None,
     practice_service: PracticeService | None = None,
+    trace_store: LocalTraceStore | None = None,
+    environ: dict[str, str] | None = None,
 ) -> FastAPI:
     if database is not None and db_path is not None:
         raise ValueError("Pass either database or db_path, not both")
 
+    environment = os.environ if environ is None else environ
+    observer_enabled = enabled(environment.get("APPRENTICE_OBSERVER_ENABLED"))
+    observer_token = environment.get("APPRENTICE_OBSERVER_TOKEN", "")
+    if observer_enabled and not observer_token:
+        raise ValueError(
+            "APPRENTICE_OBSERVER_TOKEN is required when APPRENTICE_OBSERVER_ENABLED=true"
+        )
     database = database or SQLiteDatabase(db_path or "apprentice.db")
-    service = practice_service or PracticeService(database=database)
+    if observer_enabled and trace_store is None:
+        trace_store = LocalTraceStore(
+            environment.get("APPRENTICE_TRACE_PATH", ".apprentice/traces.jsonl"),
+            retention_days=_environment_int(
+                environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30
+            ),
+            content_limit_bytes=_environment_int(
+                environment.get("APPRENTICE_TRACE_CONTENT_LIMIT_BYTES"), 256_000
+            ),
+        )
+    service = practice_service or PracticeService(
+        database=database,
+        tracer=build_tracer(environment, local_store=trace_store),
+    )
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
     app = FastAPI(title="Apprentice")
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
     app.state.database = database
     app.state.practice_service = service
+    app.state.trace_store = trace_store
 
     @app.exception_handler(PracticeSessionNotFoundError)
     async def practice_not_found_handler(request: Request, error: PracticeSessionNotFoundError):
@@ -171,6 +211,13 @@ def build_app(
         session = service.respond(session_id, body.response.strip())
         return session.model_dump(mode="json")
 
+    @app.post("/api/practice/sessions/{session_id}/clarifications")
+    def ask_practice_clarification(
+        session_id: str, body: ClarificationRequest
+    ) -> dict[str, object]:
+        session = service.clarify(session_id, body.question.strip())
+        return session.model_dump(mode="json")
+
     @app.post("/api/practice/sessions/{session_id}/stop")
     def stop_practice_session(session_id: str) -> dict[str, object]:
         session = service.stop(session_id)
@@ -180,9 +227,123 @@ def build_app(
     def get_practice_debrief(session_id: str) -> dict[str, object]:
         return service.get_debrief(session_id).model_dump(mode="json")
 
+    @app.get("/api/profile")
+    def get_judgment_profile() -> dict[str, object]:
+        profile = service.get_judgment_profile()
+        return {
+            "profile": profile.model_dump(mode="json"),
+            "cases": [
+                item.model_dump(mode="json") for item in service.list_portfolio_cases()
+            ],
+        }
+
+    @app.put("/api/profile")
+    def update_judgment_profile(body: JudgmentProfileRequest) -> dict[str, object]:
+        return service.update_judgment_profile(
+            body.display_name, body.headline, body.bio
+        ).model_dump(mode="json")
+
+    @app.get("/api/profile/cases/{session_id}")
+    def get_portfolio_case(session_id: str) -> dict[str, object]:
+        return service.get_portfolio_case(session_id).model_dump(mode="json")
+
     @app.get("/")
     def home(request: Request):
         return templates.TemplateResponse(request, "dojo_entry.html", {})
+
+    @app.get("/profile", response_class=HTMLResponse)
+    def judgment_profile_page(request: Request):
+        profile = service.get_judgment_profile()
+        cases = service.list_portfolio_cases()
+        return templates.TemplateResponse(
+            request,
+            "dojo_profile.html",
+            _profile_page_context(profile.model_dump(mode="json"), cases),
+        )
+
+    @app.post("/profile")
+    def update_judgment_profile_page(
+        display_name: Annotated[
+            str, Form(min_length=1, max_length=120, pattern=r".*\S.*")
+        ],
+        headline: Annotated[str, Form(max_length=240)] = "",
+        bio: Annotated[str, Form(max_length=2_000)] = "",
+    ) -> RedirectResponse:
+        service.update_judgment_profile(display_name, headline, bio)
+        return RedirectResponse(url="/profile", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.get("/profile/cases/{session_id}", response_class=HTMLResponse)
+    def portfolio_case_page(request: Request, session_id: str):
+        case = service.get_portfolio_case(session_id)
+        return templates.TemplateResponse(
+            request,
+            "dojo_case.html",
+            {"case": _portfolio_case_context(case.model_dump(mode="json"))},
+        )
+
+    if observer_enabled:
+
+        def observer_allowed(request: Request) -> bool:
+            if not _is_loopback(request):
+                return False
+            authorization = request.headers.get("authorization", "")
+            bearer = authorization[7:] if authorization.casefold().startswith("bearer ") else ""
+            supplied = bearer or request.cookies.get(
+                "apprentice_observer", ""
+            )
+            return bool(supplied) and hmac.compare_digest(supplied, observer_token)
+
+        @app.get("/observer", response_class=HTMLResponse)
+        def observer_dashboard(request: Request):
+            if not _is_loopback(request):
+                return _observer_not_found()
+            if not observer_allowed(request):
+                return templates.TemplateResponse(request, "observer_login.html", {})
+            return templates.TemplateResponse(
+                request,
+                "observer.html",
+                {
+                    "content_capture": enabled(environment.get("APPRENTICE_TRACE_CONTENT")),
+                    "retention_days": _environment_int(
+                        environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30
+                    ),
+                    "langfuse_enabled": enabled(
+                        environment.get("APPRENTICE_LANGFUSE_ENABLED")
+                    ),
+                    "langfuse_base_url": environment.get("LANGFUSE_BASE_URL", ""),
+                },
+            )
+
+        @app.post("/api/observer/session")
+        def create_observer_session(request: Request, body: ObserverSessionRequest):
+            if not _is_loopback(request) or not hmac.compare_digest(body.token, observer_token):
+                return _observer_not_found()
+            response = JSONResponse({"authenticated": True})
+            response.set_cookie(
+                "apprentice_observer",
+                observer_token,
+                httponly=True,
+                samesite="strict",
+                path="/",
+            )
+            return response
+
+        @app.get("/api/observer/traces")
+        def observer_traces(request: Request):
+            if not observer_allowed(request):
+                return _observer_not_found()
+            assert trace_store is not None
+            return {"traces": trace_store.sessions()}
+
+        @app.get("/api/observer/traces/{session_id}")
+        def observer_trace(request: Request, session_id: str):
+            if not observer_allowed(request):
+                return _observer_not_found()
+            assert trace_store is not None
+            records = trace_store.records(session_id)
+            if not records:
+                return _observer_not_found()
+            return {"session_id": session_id, "events": records}
 
     @app.post("/practice")
     def start_practice(
@@ -217,6 +378,19 @@ def build_app(
         )
         return RedirectResponse(url=destination, status_code=status.HTTP_303_SEE_OTHER)
 
+    @app.post("/practice/{session_id}/clarifications")
+    def practice_clarification(
+        session_id: str,
+        question: Annotated[
+            str, Form(min_length=1, max_length=2_000, pattern=r".*\S.*")
+        ],
+    ) -> RedirectResponse:
+        service.clarify(session_id, question.strip())
+        return RedirectResponse(
+            url=f"/practice/{session_id}#decision",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     @app.post("/practice/{session_id}/stop")
     def stop_practice(session_id: str) -> RedirectResponse:
         service.stop(session_id)
@@ -245,6 +419,22 @@ def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
         status_code=status_code,
         content={"error": {"code": code, "message": message}},
     )
+
+
+def _observer_not_found() -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Not Found"})
+
+
+def _is_loopback(request: Request) -> bool:
+    return bool(request.client) and request.client.host in {"127.0.0.1", "::1"}
+
+
+def _environment_int(value: str | None, default: int) -> int:
+    try:
+        parsed = int(value) if value is not None else default
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
 
 
 def _practice_error_response(
@@ -300,6 +490,7 @@ def _practice_page_context(session: PracticeSession) -> dict[str, object]:
     scenario = raw["scenario"]
     world = raw["world"]
     turns = raw["turns"]
+    clarifications = raw["clarifications"]
     developments = scenario["how_it_developed"]
     timeline = [_timeline_context(item, index) for index, item in enumerate(developments)]
     events = world.get("events", [])
@@ -323,6 +514,21 @@ def _practice_page_context(session: PracticeSession) -> dict[str, object]:
         "situational_update": situational_update,
         "latest_turn": presented_turns[-1] if presented_turns else None,
         "prior_turns": presented_turns[:-1],
+        "clarifications": [
+            {
+                "question": item["question"],
+                "answer": item["response"]["answer"],
+                "status": item["response"]["status"],
+                "evidence": item["response"]["evidence"],
+            }
+            for item in clarifications
+        ],
+        "can_clarify": (
+            not raw["manually_stopped"]
+            and raw["debrief"] is None
+            and not world.get("completed")
+            and not world.get("terminal")
+        ),
         "can_stop": (
             bool(turns)
             and not raw["manually_stopped"]
@@ -350,8 +556,10 @@ def _practice_turn_context(turn: dict[str, object]) -> dict[str, object]:
     assert isinstance(assessment, dict)
     return {
         "response": turn["response"],
+        "disposition": assessment["disposition"],
         "response_excerpt": assessment.get("response_excerpt"),
         "interpretation": assessment["interpretation"],
+        "recognized_intents": assessment["recognized_intents"],
         "strength": assessment["strength"],
         "risk": assessment["risk"],
         "evidence": assessment["evidence"],
@@ -375,3 +583,102 @@ def _debrief_page_context(debrief: FinalDebrief) -> dict[str, object]:
         "carry_forward": raw["carry_forward"],
         "evidence": raw["evidence"],
     }
+
+
+def _profile_page_context(
+    profile: dict[str, object], cases: object
+) -> dict[str, object]:
+    raw_cases = [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+        for item in cases
+    ]
+    presented_cases = [_portfolio_case_summary(item) for item in raw_cases]
+    return {
+        "profile": {
+            "display_name": profile["display_name"],
+            "headline": profile["headline"],
+            "bio": profile["bio"],
+        },
+        "stats": profile["counts"],
+        "cases": presented_cases,
+    }
+
+
+def _portfolio_case_summary(raw: dict[str, object]) -> dict[str, object]:
+    turns = raw["turns"]
+    assert isinstance(turns, list)
+    first_response = turns[0]["response"] if turns else ""
+    return {
+        "id": raw["session_id"],
+        "title": raw["title"],
+        "field": raw["field"],
+        "difficulty_level": raw["difficulty_level"],
+        "status": raw["status"],
+        "status_label": _status_label(str(raw["status"])),
+        "score": raw["score"],
+        "summary": raw["briefing"],
+        "proposed_solution": _excerpt(str(first_response), 280),
+        "turn_count": len(turns),
+    }
+
+
+def _portfolio_case_context(raw: dict[str, object]) -> dict[str, object]:
+    turns = raw["turns"]
+    assert isinstance(turns, list)
+    debrief = raw["debrief"]
+    return {
+        **_portfolio_case_summary(raw),
+        "role": raw["learner_role"],
+        "outcome_label": _outcome_label(str(raw["outcome"])),
+        "first_decision": raw["first_decision"],
+        "constraints": raw["immediate_constraints"],
+        "turns": [
+            {
+                "response": turn["response"],
+                "recognized_intents": turn["recognized_intents"],
+                "action_label": (
+                    str(turn["action_kind"]).replace("_", " ")
+                    if turn["action_kind"]
+                    else "No world action executed"
+                ),
+                "disposition_label": str(turn["disposition"]).replace("_", " "),
+                "outcome_label": _outcome_label(str(turn["outcome"])),
+                "strength": turn["strength"],
+                "risk": turn["risk"],
+            }
+            for turn in turns
+        ],
+        "debrief": (
+            {
+                "score_rationale": debrief["score_rationale"],
+                "strong_decisions": debrief["strong_decisions"],
+                "growth_areas": [*debrief["missed"], *debrief["risky_assumptions"]],
+                "evidence": debrief["evidence"],
+            }
+            if isinstance(debrief, dict)
+            else None
+        ),
+    }
+
+
+def _status_label(status_value: str) -> str:
+    return {
+        "active": "In progress",
+        "resolved": "Resolved",
+        "reviewed": "Reviewed",
+    }.get(status_value, status_value.replace("_", " ").title())
+
+
+def _outcome_label(outcome: str) -> str:
+    return {
+        "active": "Situation still active",
+        "recovered": "Recovered",
+        "terminal_escalation": "Terminal escalation",
+    }.get(outcome, outcome.replace("_", " ").title())
+
+
+def _excerpt(value: str, limit: int) -> str:
+    normalized = " ".join(value.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "…"

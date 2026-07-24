@@ -185,8 +185,6 @@ class GeneratedScenarioSpec(GeneratedModel):
         if not any(event.terminal for event in self.timed_escalations):
             raise ValueError("at least one timed escalation must be terminal")
 
-        if not any(item.kind == "action_completed" for item in self.success_requirements):
-            raise ValueError("success must require at least one learner action")
         revealable = {item.id for item in self.artifacts if item.visible_at_start}
         revealable.update(ref for action in self.actions for ref in action.reveals_artifacts)
         revealable.update(
@@ -632,13 +630,6 @@ class GeneratedScenarioRuntime:
         action_defs = {action.id: action for action in canonical_spec.actions}
         if not set(completed) <= action_defs.keys():
             raise GeneratedScenarioError("restored simulation has unknown completed actions")
-        completed_set = set(completed)
-        for action_id in completed:
-            if not set(action_defs[action_id].prerequisites) <= completed_set:
-                raise GeneratedScenarioError(
-                    f"restored completed action lacks prerequisites: {action_id}"
-                )
-
         revealed = _validated_string_list(snapshot, "revealed_artifacts")
         artifact_ids = {artifact.id for artifact in canonical_spec.artifacts}
         initially_visible = {
@@ -685,7 +676,9 @@ class GeneratedScenarioRuntime:
     def snapshot(self, run_id: str) -> dict[str, object]:
         return self._snapshot(self._get(run_id))
 
-    def apply(self, run_id: str, action_id: str) -> dict[str, object]:
+    def apply(
+        self, run_id: str, action_id: str, *, allow_out_of_order: bool = False
+    ) -> dict[str, object]:
         state = self._get(run_id)
         if state["outcome"] != "active":
             raise GeneratedScenarioError("the simulation has already ended")
@@ -699,7 +692,7 @@ class GeneratedScenarioRuntime:
         if action_id in completed:
             raise GeneratedScenarioError(f"action has already been completed: {action_id}")
         missing = set(action.prerequisites) - completed
-        if missing:
+        if missing and not allow_out_of_order:
             raise GeneratedScenarioError(
                 f"action {action_id} is missing prerequisites: {sorted(missing)}"
             )

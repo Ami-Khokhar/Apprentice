@@ -15,6 +15,14 @@ CREATE TABLE IF NOT EXISTS practice_sessions (
   created_at REAL NOT NULL,
   updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS judgment_profile (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  display_name TEXT NOT NULL,
+  headline TEXT NOT NULL,
+  bio TEXT NOT NULL,
+  updated_at REAL NOT NULL
+);
 """
 
 

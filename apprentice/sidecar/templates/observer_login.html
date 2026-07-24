@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observer access · Apprentice</title>
+  <style>
+    :root { color-scheme: light; --paper:#f5f1e8; --sumi:#181713; --verm:#d43418; --line:#cfc5b4; }
+    * { box-sizing: border-box; }
+    body { min-height:100vh; margin:0; display:grid; place-items:center; color:var(--sumi); background:var(--paper); font:15px/1.5 Inter,system-ui,sans-serif; }
+    main { width:min(440px,calc(100% - 2rem)); border-top:1px solid var(--sumi); border-bottom:1px solid var(--sumi); padding:2.5rem 0; }
+    h1 { margin:0; font:400 2.6rem/1.05 "Iowan Old Style",Georgia,serif; }
+    p { color:#6d655b; }
+    label { display:block; margin:1.5rem 0 .4rem; font-weight:650; }
+    input { width:100%; border:1px solid var(--line); padding:.8rem; background:transparent; font:inherit; }
+    button { margin-top:.8rem; border:1px solid var(--sumi); padding:.7rem 1rem; background:transparent; font:inherit; cursor:pointer; }
+    button:hover { color:var(--verm); border-color:var(--verm); }
+    #message { min-height:1.5rem; color:var(--verm); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Apprentice Observer</h1>
+    <p>This local dashboard is separate from the learner interface. Enter the owner token to continue.</p>
+    <form id="owner-form">
+      <label for="owner-token">Owner token</label>
+      <input id="owner-token" type="password" autocomplete="current-password" required>
+      <button type="submit">Open Observer</button>
+      <p id="message" role="status"></p>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector("#owner-form");
+    const field = document.querySelector("#owner-token");
+    const message = document.querySelector("#message");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "Checking local owner access…";
+      const response = await fetch("/api/observer/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: field.value })
+      });
+      if (!response.ok) {
+        message.textContent = "That owner token was not accepted.";
+        field.select();
+        return;
+      }
+      location.replace("/observer");
+    });
+    const fragment = new URLSearchParams(location.hash.slice(1));
+    if (fragment.get("token")) {
+      field.value = fragment.get("token");
+      history.replaceState(null, "", "/observer");
+      form.requestSubmit();
+    }
+  </script>
+</body>
+</html>

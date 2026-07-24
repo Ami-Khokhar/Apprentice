@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f1e8">
+  <title>Observer · Apprentice</title>
+  <link rel="stylesheet" href="/static/observer.css">
+</head>
+<body
+  data-content-capture="{{ 'on' if content_capture else 'off' }}"
+  data-retention-days="{{ retention_days }}"
+  data-langfuse-enabled="{{ 'true' if langfuse_enabled else 'false' }}"
+  data-langfuse-url="{{ langfuse_base_url }}"
+>
+  <a class="skip-link" href="#event-flow">Skip to event flow</a>
+  <header class="observer-header">
+    <a class="observer-wordmark" href="/">Apprentice</a>
+    <h1>Observer</h1>
+    <div class="owner-mark">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      Owner only
+    </div>
+  </header>
+
+  <main class="observer-shell">
+    <aside class="trace-panel" aria-label="Simulation traces">
+      <div class="panel-heading"><h2>Simulation traces</h2></div>
+      <div class="trace-filters" role="tablist" aria-label="Filter traces">
+        <button class="active" type="button" data-filter="all">All</button>
+        <button type="button" data-filter="active">Active</button>
+        <button type="button" data-filter="debriefed">Debriefed</button>
+        <button type="button" data-filter="error">Errors</button>
+      </div>
+      <div class="trace-columns" aria-hidden="true"><span>Level</span><span>Session</span><span>Time</span></div>
+      <div class="trace-list" id="trace-list" aria-live="polite">
+        <div class="loading-state">Reading local traces…</div>
+      </div>
+    </aside>
+
+    <section class="flow-panel" id="event-flow">
+      <div class="panel-heading flow-heading">
+        <h2>How this situation was formed</h2>
+        <p>Observable inputs and outputs — not hidden chain-of-thought.</p>
+      </div>
+      <div class="flow-canvas">
+        <div class="enso-brush" aria-hidden="true"></div>
+        <div class="event-flow" id="flow-list">
+          <div class="empty-state">
+            <span class="empty-mark" aria-hidden="true"></span>
+            <h3>No trace selected</h3>
+            <p>Start a simulation, then choose its trace to inspect each observable model event.</p>
+          </div>
+        </div>
+      </div>
+      <div class="timeline" id="timeline" aria-label="Trace event timeline"></div>
+    </section>
+
+    <aside class="inspector-panel" aria-label="Event inspector">
+      <div class="panel-heading"><h2>Event inspector</h2></div>
+      <dl class="event-facts" id="event-facts">
+        <div><dt>Agent</dt><dd>—</dd></div>
+        <div><dt>Model</dt><dd>—</dd></div>
+        <div><dt>Attempt</dt><dd>—</dd></div>
+        <div><dt>Duration</dt><dd>—</dd></div>
+        <div><dt>Result</dt><dd>—</dd></div>
+      </dl>
+      <div class="inspector-tabs" role="tablist" aria-label="Event data">
+        <button class="active" type="button" data-tab="input">Input</button>
+        <button type="button" data-tab="output">Output</button>
+        <button type="button" data-tab="evidence">Evidence</button>
+      </div>
+      <pre class="event-json" id="event-json" tabindex="0">Select an event to inspect its recorded data.</pre>
+      <div class="inspector-actions">
+        <button class="copy-button" type="button" id="copy-event" disabled>Copy event</button>
+        {% if langfuse_enabled and langfuse_base_url %}
+          <a class="langfuse-link" href="{{ langfuse_base_url }}" target="_blank" rel="noreferrer">Open Langfuse
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"></path></svg>
+          </a>
+        {% endif %}
+      </div>
+    </aside>
+  </main>
+
+  <footer class="observer-status">
+    <span><i></i> Local trace</span><b>•</b>
+    <span>Content capture {{ 'on' if content_capture else 'off' }}</span><b>•</b>
+    <span>Retention {{ retention_days }} days</span>
+  </footer>
+  <script src="/static/observer.js" defer></script>
+</body>
+</html>

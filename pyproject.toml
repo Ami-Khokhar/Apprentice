@@ -15,6 +15,11 @@ dependencies = [
   "uvicorn>=0.34",
 ]
 
+[project.optional-dependencies]
+observability = [
+  "langfuse>=4.7,<5",
+]
+
 [dependency-groups]
 dev = [
   "httpx>=0.28",

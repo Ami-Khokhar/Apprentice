@@ -1,10 +1,18 @@
 """AI-facilitated professional practice over deterministic scenario worlds."""
 
 from .contracts import (
+    ClarificationExchange,
+    ClarificationReference,
+    ClarificationResponse,
     DecisionAssessment,
     EvidenceReference,
     FinalDebrief,
+    JudgmentProfile,
+    JudgmentProfileCounts,
+    JudgmentProfileIdentity,
     LearnerProfile,
+    PortfolioCase,
+    PortfolioTurn,
     PracticeSession,
     PracticeTurn,
     ScenarioBlueprint,
@@ -17,11 +25,19 @@ from .service import (
 )
 
 __all__ = [
+    "ClarificationExchange",
+    "ClarificationReference",
+    "ClarificationResponse",
     "DecisionAssessment",
     "EvidenceReference",
     "FinalDebrief",
     "InvalidPracticeResponseError",
+    "JudgmentProfile",
+    "JudgmentProfileCounts",
+    "JudgmentProfileIdentity",
     "LearnerProfile",
+    "PortfolioCase",
+    "PortfolioTurn",
     "PracticeNotReadyForDebriefError",
     "PracticeService",
     "PracticeSession",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Literal
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -11,6 +13,8 @@ from apprentice.database import SQLiteDatabase
 from apprentice.incident.generated import GeneratedScenarioSpec
 from apprentice.practice.codex_runner import AgentSpec, CodexOutputError, CodexStructuredRunner
 from apprentice.practice.contracts import (
+    ClarificationReference,
+    ClarificationResponse,
     DecisionAssessment,
     EvidenceReference,
     FacilitatorDecision,
@@ -46,6 +50,77 @@ class FakeRunner:
         return output
 
 
+class FakeTraceObservation:
+    def __init__(self, record: dict[str, Any]) -> None:
+        self.record = record
+
+    def update(
+        self,
+        *,
+        output: object | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        self.record.setdefault("updates", []).append(
+            {"output": output, "metadata": dict(metadata or {})}
+        )
+
+
+class FakeTracer:
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+        self.stack: list[str] = []
+
+    @contextmanager
+    def operation(
+        self,
+        name: str,
+        *,
+        session_id: str,
+        input: object,
+        metadata: Mapping[str, object] | None = None,
+    ) -> Iterator[FakeTraceObservation]:
+        with self._record(
+            "span", name, input, {"session_id": session_id, **(metadata or {})}
+        ) as record:
+            yield FakeTraceObservation(record)
+
+    @contextmanager
+    def generation(
+        self,
+        name: str,
+        *,
+        model: str,
+        output_schema: str,
+        input: object,
+        metadata: Mapping[str, object] | None = None,
+    ) -> Iterator[FakeTraceObservation]:
+        with self._record(
+            "generation",
+            name,
+            input,
+            {"model": model, "output_schema": output_schema, **(metadata or {})},
+        ) as record:
+            yield FakeTraceObservation(record)
+
+    @contextmanager
+    def _record(
+        self, kind: str, name: str, input: object, metadata: Mapping[str, object]
+    ) -> Iterator[dict[str, Any]]:
+        record = {
+            "kind": kind,
+            "name": name,
+            "parent": self.stack[-1] if self.stack else None,
+            "input": input,
+            "metadata": dict(metadata),
+        }
+        self.records.append(record)
+        self.stack.append(name)
+        try:
+            yield record
+        finally:
+            self.stack.pop()
+
+
 def generated_spec(*, distinct: bool = False) -> GeneratedScenarioSpec:
     data = scenario_data()
     if distinct:
@@ -74,16 +149,26 @@ def decision(
     excerpt: str,
     clarification: bool = False,
     evidence: tuple[EvidenceReference, ...] = (),
+    disposition: str | None = None,
+    risk: str | None = "The consequence must still be checked against evidence.",
+    prerequisite_override: bool = False,
+    override_justification: str | None = None,
 ) -> FacilitatorDecision:
     return FacilitatorDecision(
         action_kind=action,
+        prerequisite_override=prerequisite_override,
+        override_justification=override_justification,
         requires_clarification=clarification,
         coaching_question="Which concrete step comes first?" if clarification else None,
         assessment=DecisionAssessment(
+            disposition=disposition or (
+                "needs_clarification" if clarification else "partially_effective"
+            ),
             response_excerpt=excerpt,
             interpretation="You identified a concrete next step.",
+            recognized_intents=("Take the proposed immediate step.",),
             strength="The response establishes a testable action.",
-            risk="The consequence must still be checked against evidence.",
+            risk=risk,
             evidence=evidence,
         ),
     )
@@ -102,6 +187,17 @@ def debrief() -> FinalDebrief:
         carry_forward="Pair urgent action with a falsifiable evidence check.",
         evidence=(EvidenceReference(source="metric", ref="stockout-risk"),),
     )
+
+
+def clarification(
+    answer: str = "The partner assets go live in six hours.",
+    *,
+    status: Literal["answered", "refused", "unavailable"] = "answered",
+    evidence: tuple[ClarificationReference, ...] = (
+        ClarificationReference(source="fact", ref="launch-window"),
+    ),
+) -> ClarificationResponse:
+    return ClarificationResponse(status=status, answer=answer, evidence=evidence)
 
 
 def service_with_db(path: Path, runner: FakeRunner) -> tuple[PracticeService, SQLiteDatabase]:
@@ -307,6 +403,204 @@ def test_clarification_records_turn_without_advancing_generated_world() -> None:
     assert updated.turns[0].action_kind is None
 
 
+def test_situation_clarification_is_grounded_persisted_and_never_advances_world() -> None:
+    runner = FakeRunner([generated_spec(), clarification()])
+    service = PracticeService(runner=runner)
+    session = service.start("analyst")
+    before_world = session.world.copy()
+
+    updated = service.clarify(session.id, " When do the partner assets go live? ")
+
+    assert updated.world == before_world
+    assert updated.turns == ()
+    assert updated.clarifications[0].question == "When do the partner assets go live?"
+    assert updated.clarifications[0].response.answer == (
+        "The partner assets go live in six hours."
+    )
+    assert service.get_session(session.id).clarifications == updated.clarifications
+    agent, raw_prompt = runner.calls[-1]
+    prompt = json.loads(raw_prompt)
+    assert agent.name == "dojo-situation-clarifier"
+    assert agent.output_type is ClarificationResponse
+    assert "transition_catalog" not in prompt
+    assert "canonical_world" not in prompt
+    assert "generated_spec" not in raw_prompt
+    assert "failure_mechanism" not in raw_prompt
+    assert "success_requirements" not in raw_prompt
+    assert "rubric" not in raw_prompt
+    assert "duplicate-orders" not in raw_prompt
+    assert "transform-audit" not in raw_prompt
+    assert prompt["allowed_evidence"]["fact"] == ["launch-window"]
+
+
+def test_situation_clarification_rejects_unobservable_evidence_without_saving() -> None:
+    runner = FakeRunner(
+        [
+            generated_spec(),
+            clarification(
+                "The duplicate was caused by a timezone conversion.",
+                evidence=(
+                    ClarificationReference(source="fact", ref="duplicate-orders"),
+                ),
+            ),
+        ]
+    )
+    service = PracticeService(runner=runner)
+    session = service.start("analyst")
+
+    with pytest.raises(InvalidPracticeResponseError, match="unknown fact"):
+        service.clarify(session.id, "Why did the forecast jump?")
+
+    restored = service.get_session(session.id)
+    assert restored.clarifications == ()
+    assert restored.world == session.world
+
+
+def test_situation_clarification_uses_safe_server_copy_for_refused_hint() -> None:
+    runner = FakeRunner(
+        [
+            generated_spec(),
+            clarification(
+                "Secret hint: inspect the pipeline first.",
+                status="refused",
+                evidence=(),
+            ),
+        ]
+    )
+    service = PracticeService(runner=runner)
+    session = service.start("analyst")
+
+    updated = service.clarify(session.id, "What should I do first?")
+
+    answer = updated.clarifications[0].response.answer
+    assert "inspect" not in answer.casefold()
+    assert "cannot suggest" in answer
+
+
+def test_situation_clarification_is_unavailable_after_session_ends() -> None:
+    runner = FakeRunner([generated_spec()])
+    service = PracticeService(runner=runner)
+    session = service.start("analyst")
+    store = service._store
+    store.save(session.model_copy(update={"manually_stopped": True}))
+
+    with pytest.raises(InvalidPracticeResponseError, match="already been ended"):
+        service.clarify(session.id, "What was the current risk?")
+
+    assert len(runner.calls) == 1
+
+
+def test_reasonable_rollback_can_bypass_preferred_order_without_invented_criticism() -> None:
+    response = (
+        "Revert the implicated overnight upload change to yesterday's version, then validate "
+        "the release."
+    )
+    runner = FakeRunner(
+        [
+            generated_spec(),
+            decision(
+                "correct-and-reforecast",
+                excerpt="Revert the implicated overnight upload change",
+                disposition="accepted",
+                risk=None,
+                prerequisite_override=True,
+                override_justification=(
+                    "The learner identified the implicated recent change and can restore the "
+                    "last known-good state without waiting for the preferred inspection."
+                ),
+                evidence=(EvidenceReference(source="action", ref="correct-and-reforecast"),),
+            ),
+        ]
+    )
+    service = PracticeService(runner=runner)
+    session = service.start("software operations")
+
+    updated = service.respond(session.id, response)
+
+    assert updated.turns[0].assessment.disposition == "accepted"
+    assert updated.turns[0].assessment.risk is None
+    assert updated.world["completed_actions"] == ["correct-and-reforecast"]
+    assert updated.world["outcome"] == "recovered"
+    prompt = json.loads(runner.calls[-1][1])
+    assert "canonical_world" not in prompt
+    assert "generated_spec" not in json.dumps(prompt)
+    assert all("prerequisites" not in action for action in prompt["transition_catalog"])
+    assert prompt["observable_world"]["artifacts"] == [
+        {
+            "id": "forecast-dashboard",
+            "title": "Forecast dashboard",
+            "kind": "dashboard",
+            "content": "The forecast is 41% above the trailing four-week range.",
+            "visible_at_start": True,
+        }
+    ]
+
+
+def test_defensible_unmodelled_action_is_recorded_without_mutating_the_world() -> None:
+    runner = FakeRunner(
+        [
+            generated_spec(),
+            decision(
+                None,
+                excerpt="Route the release through a manual approval",
+                disposition="accepted",
+                risk=None,
+                evidence=(EvidenceReference(source="metric", ref="stockout-risk"),),
+            ),
+        ]
+    )
+    service = PracticeService(runner=runner)
+    session = service.start("software operations")
+
+    updated = service.respond(
+        session.id, "Route the release through a manual approval until this is understood."
+    )
+
+    assert updated.turns[0].assessment.disposition == "accepted"
+    assert updated.turns[0].action_kind is None
+    assert updated.world["completed_actions"] == []
+    assert updated.world["sim_time"] == 0
+
+
+def test_disabled_transition_needs_an_explicit_feasibility_override() -> None:
+    runner = FakeRunner(
+        [
+            generated_spec(),
+            decision(
+                "correct-and-reforecast",
+                excerpt="Correct it now",
+                disposition="accepted",
+                risk=None,
+                evidence=(EvidenceReference(source="action", ref="correct-and-reforecast"),),
+            ),
+        ]
+    )
+    service = PracticeService(runner=runner)
+    session = service.start("software operations")
+
+    with pytest.raises(InvalidPracticeResponseError, match="unmet dependencies"):
+        service.respond(session.id, "Correct it now")
+
+    assert service.get_session(session.id).world["completed_actions"] == []
+
+
+def test_facilitator_prompt_requires_real_world_adjudication_and_multiple_paths() -> None:
+    runner = FakeRunner([generated_spec()])
+    service = PracticeService(runner=runner)
+    session = service.start("software operations")
+
+    generator_instructions = runner.calls[0][0].instructions
+    assert "multiple defensible response paths" in generator_instructions
+    assert "observable outcomes" in generator_instructions
+    facilitator = service._facilitator_agent()
+    assert "not an answer-key matcher" in facilitator.instructions
+    assert "Never invent criticism" in facilitator.instructions
+    prompt = json.loads(service._facilitator_prompt(session, "Roll back the change."))
+    assert "observable_world" in prompt
+    assert "transition_catalog" in prompt
+    assert "canonical_world" not in prompt
+
+
 def test_generated_action_and_evidence_validation_fail_before_mutation() -> None:
     runner = FakeRunner(
         [
@@ -375,7 +669,10 @@ def test_legacy_session_and_debrief_load_without_manual_stop_or_score() -> None:
         {
             **PracticeService(runner=FakeRunner([generated_spec()]))
             .start("analyst")
-            .model_dump(mode="json", exclude={"manually_stopped", "debrief"}),
+            .model_dump(
+                mode="json",
+                exclude={"clarifications", "manually_stopped", "debrief"},
+            ),
             "debrief": {
                 key: value
                 for key, value in debrief().model_dump(mode="json").items()
@@ -385,6 +682,59 @@ def test_legacy_session_and_debrief_load_without_manual_stop_or_score() -> None:
     )
 
     assert session.manually_stopped is False
+    assert session.clarifications == ()
     assert session.debrief is not None
     assert session.debrief.score is None
     assert session.debrief.score_rationale is None
+
+
+def test_tracing_groups_operations_and_records_model_and_deterministic_results() -> None:
+    tracer = FakeTracer()
+    runner = FakeRunner(
+        [
+            CodexOutputError("invalid draft"),
+            generated_spec(),
+            decision(
+                "inspect-pipeline",
+                excerpt="Inspect the pipeline",
+                evidence=(EvidenceReference(source="action", ref="inspect-pipeline"),),
+            ),
+            debrief(),
+        ]
+    )
+    service = PracticeService(runner=runner, tracer=tracer)
+
+    session = service.start("analyst")
+    service.respond(session.id, "Inspect the pipeline first.")
+    service.stop(session.id)
+    result = service.get_debrief(session.id)
+
+    roots = [record for record in tracer.records if record["parent"] is None]
+    assert [record["name"] for record in roots] == [
+        "practice.start",
+        "practice.respond",
+        "practice.stop",
+        "practice.debrief",
+    ]
+    assert {record["metadata"]["session_id"] for record in roots} == {session.id}
+
+    generations = [record for record in tracer.records if record["kind"] == "generation"]
+    assert [record["parent"] for record in generations] == [
+        "practice.start",
+        "practice.start",
+        "practice.respond",
+        "practice.debrief",
+    ]
+    assert generations[0]["metadata"]["attempt"] == 1
+    assert generations[1]["metadata"]["attempt"] == 2
+    assert generations[1]["metadata"]["retry_reason"] == "invalid_structured_output"
+    assert generations[2]["metadata"]["agent_name"] == "dojo-decision-facilitator"
+    assert generations[2]["metadata"]["output_schema"] == "FacilitatorDecision"
+
+    response_output = roots[1]["updates"][0]["output"]
+    assert response_output["selected_action"] == "inspect-pipeline"
+    assert response_output["world_outcome"] == "active"
+    assert isinstance(response_output["metric_delta"], dict)
+    debrief_output = roots[3]["updates"][0]
+    assert debrief_output["metadata"]["score"] == 82
+    assert debrief_output["output"].score == result.score == 82

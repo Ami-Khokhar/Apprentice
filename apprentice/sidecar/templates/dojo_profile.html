@@ -1,0 +1,106 @@
+{% extends "dojo_base.html" %}
+
+{% block title %}My practice · Apprentice{% endblock %}
+{% block body_class %}profile-page{% endblock %}
+
+{% block content %}
+  <article class="dojo-view profile-view" aria-labelledby="profile-title">
+    <header class="profile-heading">
+      <div>
+        <p class="eyebrow">Judgment profile</p>
+        <h1 id="profile-title">{{ profile.display_name }}</h1>
+        <p class="profile-headline">{{ profile.headline or "A growing record of professional judgment." }}</p>
+        {% if profile.bio %}<p class="profile-bio">{{ profile.bio }}</p>{% endif %}
+      </div>
+      <a class="text-action" href="#edit-profile">Edit profile</a>
+    </header>
+
+    <dl class="profile-stats" aria-label="Practice summary">
+      <div>
+        <dt>Encountered</dt>
+        <dd>{{ stats.encountered }}</dd>
+      </div>
+      <div>
+        <dt>Resolved</dt>
+        <dd>{{ stats.resolved }}</dd>
+      </div>
+      <div>
+        <dt>Reviewed</dt>
+        <dd>{{ stats.reviewed }}</dd>
+      </div>
+      <div>
+        <dt>In progress</dt>
+        <dd>{{ stats.active }}</dd>
+      </div>
+    </dl>
+
+    <section class="portfolio-section" aria-labelledby="portfolio-title">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Problem portfolio</p>
+          <h2 id="portfolio-title">Your decisions, with their consequences</h2>
+        </div>
+        <a class="text-action" href="/">Practice another situation</a>
+      </div>
+
+      {% if cases %}
+        <ol class="case-list">
+          {% for case in cases %}
+            <li>
+              <a class="case-card" href="/profile/cases/{{ case.id }}">
+                <div class="case-card-topline">
+                  <span class="case-status status-{{ case.status }}">{{ case.status_label }}</span>
+                  <span>{{ case.field }} · Level {{ case.difficulty_level }}</span>
+                </div>
+                <h3>{{ case.title }}</h3>
+                <p>{{ case.summary }}</p>
+                {% if case.proposed_solution %}
+                  <blockquote>“{{ case.proposed_solution }}”</blockquote>
+                {% else %}
+                  <p class="case-empty">No decision has been proposed yet.</p>
+                {% endif %}
+                <div class="case-card-footer">
+                  <span>{{ case.turn_count }} decision{% if case.turn_count != 1 %}s{% endif %}</span>
+                  {% if case.score is not none %}<strong>{{ case.score }}/100</strong>{% endif %}
+                  <span aria-hidden="true">View case →</span>
+                </div>
+              </a>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <div class="portfolio-empty">
+          <h3>Your first case starts in the dojo.</h3>
+          <p>Complete a practice situation and its decisions will appear here with the observable outcome.</p>
+          <a class="primary-action" href="/">
+            <span>Begin a practice</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+          </a>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="profile-editor" id="edit-profile" aria-labelledby="edit-profile-title">
+      <div>
+        <p class="eyebrow">Identity</p>
+        <h2 id="edit-profile-title">How you appear here</h2>
+        <p>This profile stays on this device. Practice evidence is generated from your recorded sessions.</p>
+      </div>
+      <form method="post" action="/profile" class="profile-form">
+        <div class="field-group">
+          <label for="display-name">Display name</label>
+          <input id="display-name" name="display_name" value="{{ profile.display_name }}" maxlength="120" required>
+        </div>
+        <div class="field-group">
+          <label for="headline">Professional direction</label>
+          <input id="headline" name="headline" value="{{ profile.headline }}" maxlength="240" placeholder="Backend engineer practicing incident leadership">
+        </div>
+        <div class="field-group">
+          <label for="bio">About your practice <span>· Optional</span></label>
+          <textarea id="bio" name="bio" maxlength="2000" rows="4">{{ profile.bio or "" }}</textarea>
+        </div>
+        <button class="secondary-action" type="submit">Save profile</button>
+      </form>
+    </section>
+  </article>
+{% endblock %}

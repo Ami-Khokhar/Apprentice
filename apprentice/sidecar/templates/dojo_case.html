@@ -1,0 +1,114 @@
+{% extends "dojo_base.html" %}
+
+{% block title %}{{ case.title }} · Apprentice{% endblock %}
+{% block body_class %}case-page{% endblock %}
+
+{% block progress %}<p class="progress-marker">Case record</p>{% endblock %}
+
+{% block content %}
+  <article class="dojo-view case-view" aria-labelledby="case-title">
+    <a class="back-link" href="/profile">← My practice</a>
+
+    <header class="case-heading">
+      <div class="case-card-topline">
+        <span class="case-status status-{{ case.status }}">{{ case.status_label }}</span>
+        <span>{{ case.field }} · Level {{ case.difficulty_level }}</span>
+      </div>
+      <h1 id="case-title">{{ case.title }}</h1>
+      <p>{{ case.summary }}</p>
+    </header>
+
+    <dl class="case-facts">
+      <div><dt>Your role</dt><dd>{{ case.role }}</dd></div>
+      <div><dt>Outcome</dt><dd>{{ case.outcome_label }}</dd></div>
+      <div><dt>Decisions</dt><dd>{{ case.turn_count }}</dd></div>
+      {% if case.score is not none %}<div><dt>Debrief score</dt><dd>{{ case.score }}/100</dd></div>{% endif %}
+    </dl>
+
+    <section class="case-problem" aria-labelledby="problem-title">
+      <p class="eyebrow">The problem</p>
+      <h2 id="problem-title">What required judgment</h2>
+      <p>{{ case.first_decision }}</p>
+      {% if case.constraints %}
+        <ul>{% for constraint in case.constraints %}<li>{{ constraint }}</li>{% endfor %}</ul>
+      {% endif %}
+    </section>
+
+    <section class="decision-record" aria-labelledby="decisions-title">
+      <p class="eyebrow">Decision record</p>
+      <h2 id="decisions-title">What you proposed—and what happened</h2>
+      {% if case.turns %}
+        <ol class="decision-list">
+          {% for turn in case.turns %}
+            <li>
+              <p class="decision-number">Decision {{ loop.index }}</p>
+              <blockquote>“{{ turn.response }}”</blockquote>
+              {% if turn.recognized_intents %}
+                <div class="decision-detail">
+                  <h3>Plan recognized</h3>
+                  <ul>{% for intent in turn.recognized_intents %}<li>{{ intent }}</li>{% endfor %}</ul>
+                </div>
+              {% endif %}
+              <dl class="decision-result">
+                <div>
+                  <dt>Executed action</dt>
+                  <dd>{{ turn.action_label }}</dd>
+                </div>
+                <div>
+                  <dt>Assessment</dt>
+                  <dd>{{ turn.disposition_label }}</dd>
+                </div>
+                <div>
+                  <dt>Resulting state</dt>
+                  <dd>{{ turn.outcome_label }}</dd>
+                </div>
+              </dl>
+              <p class="decision-strength"><strong>Strength</strong> · {{ turn.strength }}</p>
+              {% if turn.risk %}<p class="decision-risk"><strong>Remaining risk</strong> · {{ turn.risk }}</p>{% endif %}
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="case-empty">This situation has been encountered, but no decision has been recorded.</p>
+      {% endif %}
+    </section>
+
+    {% if case.debrief %}
+      <section class="case-debrief" aria-labelledby="case-debrief-title">
+        <p class="eyebrow">Reviewed evidence</p>
+        <h2 id="case-debrief-title">What this case demonstrates</h2>
+        {% if case.debrief.score_rationale %}<p class="debrief-rationale">{{ case.debrief.score_rationale }}</p>{% endif %}
+        <div class="case-debrief-grid">
+          <div>
+            <h3>Strong decisions</h3>
+            {% if case.debrief.strong_decisions %}
+              <ul>{% for item in case.debrief.strong_decisions %}<li>{{ item }}</li>{% endfor %}</ul>
+            {% else %}<p>No strength was asserted without evidence.</p>{% endif %}
+          </div>
+          <div>
+            <h3>Growth areas</h3>
+            {% if case.debrief.growth_areas %}
+              <ul>{% for item in case.debrief.growth_areas %}<li>{{ item }}</li>{% endfor %}</ul>
+            {% else %}<p>No unsupported weakness was added.</p>{% endif %}
+          </div>
+        </div>
+        {% if case.debrief.evidence %}
+          <p class="evidence-line">
+            <span>Evidence</span>
+            {% for item in case.debrief.evidence %}
+              <span>{{ item.source }} · {{ item.ref }}</span>{% if not loop.last %}<i aria-hidden="true">/</i>{% endif %}
+            {% endfor %}
+          </p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <p class="simulation-note">This record reflects performance in a simulated Apprentice situation, not verified workplace experience.</p>
+    {% if case.status == "active" %}
+      <a class="primary-action" href="/practice/{{ case.id }}">
+        <span>Continue this situation</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+      </a>
+    {% endif %}
+  </article>
+{% endblock %}

@@ -8,11 +8,18 @@ from fastapi.testclient import TestClient
 from apprentice.database import SQLiteDatabase
 from apprentice.incident.generated import GeneratedScenarioSpec
 from apprentice.practice import (
+    ClarificationExchange,
+    ClarificationReference,
+    ClarificationResponse,
     DecisionAssessment,
     EvidenceReference,
     FinalDebrief,
     InvalidPracticeResponseError,
+    JudgmentProfile,
+    JudgmentProfileCounts,
     LearnerProfile,
+    PortfolioCase,
+    PortfolioTurn,
     PracticeNotReadyForDebriefError,
     PracticeSession,
     PracticeSessionNotFoundError,
@@ -103,8 +110,17 @@ def _session(*, completed: bool = False, with_turn: bool = False) -> PracticeSes
 class FakePracticeService:
     def __init__(self) -> None:
         self.session = _session()
+        self.profile = JudgmentProfile(
+            display_name="Apprentice learner",
+            headline="",
+            bio="",
+            counts=JudgmentProfileCounts(
+                encountered=1, resolved=0, reviewed=0, active=1
+            ),
+        )
         self.start_args: tuple[str, str | None, int] | None = None
         self.response: str | None = None
+        self.question: str | None = None
         self.fail_response = False
         self.not_ready = False
         self.start_error: Exception | None = None
@@ -134,6 +150,22 @@ class FakePracticeService:
         self.session = _session(completed=True)
         return self.session
 
+    def clarify(self, session_id: str, question: str) -> PracticeSession:
+        assert session_id == self.session.id
+        self.question = question
+        exchange = ClarificationExchange(
+            question=question,
+            response=ClarificationResponse(
+                status="answered",
+                answer="The queue depth is currently 1,200 jobs.",
+                evidence=(
+                    ClarificationReference(source="metric", ref="queue_depth"),
+                ),
+            ),
+        )
+        self.session = self.session.model_copy(update={"clarifications": (exchange,)})
+        return self.session
+
     def stop(self, session_id: str) -> PracticeSession:
         assert session_id == self.session.id
         if not self.session.turns:
@@ -156,6 +188,62 @@ class FakePracticeService:
             expert_approach="Stabilize demand, confirm the failure mode, then restore capacity.",
             carry_forward="Contain before you repair.",
             evidence=(EvidenceReference(source="metric", ref="queue_depth"),),
+        )
+
+    def get_judgment_profile(self) -> JudgmentProfile:
+        return self.profile
+
+    def update_judgment_profile(
+        self, display_name: str, headline: str, bio: str
+    ) -> JudgmentProfile:
+        self.profile = self.profile.model_copy(
+            update={
+                "display_name": display_name.strip(),
+                "headline": headline.strip(),
+                "bio": bio.strip(),
+            }
+        )
+        return self.profile
+
+    def list_portfolio_cases(self) -> tuple[PortfolioCase, ...]:
+        return (self.get_portfolio_case(self.session.id),)
+
+    def get_portfolio_case(self, session_id: str) -> PortfolioCase:
+        session = self.get_session(session_id)
+        return PortfolioCase(
+            session_id=session.id,
+            title=session.scenario.title,
+            field=session.profile.field,
+            work_context=session.profile.work_context,
+            difficulty_level=session.profile.difficulty_level,
+            learner_role=session.scenario.learner_role,
+            briefing=session.scenario.briefing,
+            immediate_constraints=session.scenario.immediate_constraints,
+            first_decision=session.scenario.first_decision,
+            status="resolved" if session.world["completed"] else "active",
+            outcome=session.world["outcome"],
+            turns=tuple(
+                PortfolioTurn(
+                    response=turn.response,
+                    action_kind=turn.action_kind,
+                    recognized_intents=turn.assessment.recognized_intents,
+                    disposition=turn.assessment.disposition,
+                    interpretation=turn.assessment.interpretation,
+                    strength=turn.assessment.strength,
+                    risk=turn.assessment.risk,
+                    evidence=turn.assessment.evidence,
+                    coaching_question=turn.coaching_question,
+                    event_count=turn.event_count,
+                    outcome=turn.outcome,
+                )
+                for turn in session.turns
+            ),
+            clarifications=session.clarifications,
+            evidence=(),
+            score=session.debrief.score if session.debrief else None,
+            debrief=session.debrief,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
         )
 
 
@@ -238,6 +326,53 @@ def test_practice_page_adapts_typed_session_for_minimal_template(tmp_path) -> No
     assert "Protect active checkouts · Avoid duplicate work" not in response.text
 
 
+def test_profile_pages_show_cases_and_save_local_identity(tmp_path) -> None:
+    client, service = _client(tmp_path)
+    service.session = _session(with_turn=True)
+
+    profile = client.get("/profile")
+    saved = client.post(
+        "/profile",
+        data={
+            "display_name": "Ami",
+            "headline": "Engineer practicing incident leadership",
+            "bio": "Learning to make calmer decisions.",
+        },
+        follow_redirects=False,
+    )
+    case = client.get("/profile/cases/practice-1")
+
+    assert profile.status_code == 200
+    assert "The queue is climbing" in profile.text
+    assert "In progress" in profile.text
+    assert saved.status_code == 303
+    assert saved.headers["location"] == "/profile"
+    assert service.profile.display_name == "Ami"
+    assert case.status_code == 200
+    assert "What you proposed—and what happened" in case.text
+    assert "I would stabilize the queue" in case.text
+    assert "simulated Apprentice situation" in case.text
+
+
+def test_profile_json_contract_exposes_counts_and_case_evidence(tmp_path) -> None:
+    client, service = _client(tmp_path)
+    service.session = _session(with_turn=True)
+
+    profile = client.get("/api/profile")
+    case = client.get("/api/profile/cases/practice-1")
+    updated = client.put(
+        "/api/profile",
+        json={"display_name": "Ami", "headline": "Incident learner", "bio": ""},
+    )
+
+    assert profile.status_code == 200
+    assert profile.json()["profile"]["counts"]["encountered"] == 1
+    assert profile.json()["cases"][0]["turns"][0]["response"].startswith("I would")
+    assert case.status_code == 200
+    assert case.json()["turns"][0]["action_kind"] == "pause_dispatch"
+    assert updated.json()["display_name"] == "Ami"
+
+
 def test_practice_context_structures_timeline_and_constraints() -> None:
     session = _session().model_copy(
         update={
@@ -308,6 +443,29 @@ def test_json_practice_contract_uses_same_service(tmp_path) -> None:
     assert debrief.json()["score"] == 74
 
 
+def test_clarification_routes_use_same_non_advancing_service_flow(tmp_path) -> None:
+    client, service = _client(tmp_path)
+
+    html = client.post(
+        "/practice/practice-1/clarifications",
+        data={"question": " What is the current queue depth? "},
+        follow_redirects=False,
+    )
+
+    assert html.status_code == 303
+    assert html.headers["location"] == "/practice/practice-1#decision"
+    assert service.question == "What is the current queue depth?"
+
+    api = client.post(
+        "/api/practice/sessions/practice-1/clarifications",
+        json={"question": "Is that measured in jobs?"},
+    )
+
+    assert api.status_code == 200
+    assert api.json()["clarifications"][0]["response"]["status"] == "answered"
+    assert service.question == "Is that measured in jobs?"
+
+
 def test_manual_stop_routes_freeze_and_redirect_to_debrief(tmp_path) -> None:
     client, service = _client(tmp_path)
     service.session = _session(with_turn=True)
@@ -354,8 +512,10 @@ def test_practice_context_exposes_assessment_without_private_reasoning() -> None
 
     assert context["latest_turn"] == {
         "response": "Inspect lease expiry evidence before restoring capacity.",
+        "disposition": "partially_effective",
         "response_excerpt": "stabilize the queue",
         "interpretation": "Stabilize demand before changing capacity.",
+        "recognized_intents": [],
         "strength": "Limits further damage.",
         "risk": "The queue remains elevated.",
         "evidence": [{"source": "metric", "ref": "queue_depth"}],
@@ -387,6 +547,10 @@ def test_practice_context_only_offers_manual_stop_during_active_session() -> Non
     assert completed["can_stop"] is False
     assert _practice_page_context(terminal_session)["can_stop"] is False
     assert stopped["can_stop"] is False
+    assert active["can_clarify"] is True
+    assert completed["can_clarify"] is False
+    assert _practice_page_context(terminal_session)["can_clarify"] is False
+    assert stopped["can_clarify"] is False
 
 
 def test_html_practice_errors_render_calm_recovery_page(tmp_path) -> None:

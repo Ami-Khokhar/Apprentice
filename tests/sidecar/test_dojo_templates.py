@@ -13,9 +13,11 @@ def _environment() -> Environment:
 
 def _session() -> dict[str, object]:
     assessment = {
+        "disposition": "partially_effective",
         "response": "Pause new work, then inspect worker leases.",
         "response_excerpt": "Pause new work",
         "interpretation": "Contain demand before changing capacity.",
+        "recognized_intents": ("Pause new work.", "Inspect worker leases."),
         "strength": "Limits additional checkout failures.",
         "risk": "The queue remains elevated while diagnosis continues.",
         "evidence": ({"source": "metric", "ref": "queue_depth"},),
@@ -38,6 +40,15 @@ def _session() -> dict[str, object]:
         "situational_update": "The queue continues to climb.",
         "latest_turn": assessment,
         "prior_turns": (assessment,),
+        "clarifications": (
+            {
+                "question": "What is the queue depth?",
+                "answer": "The queue depth is 1,200 jobs.",
+                "status": "answered",
+                "evidence": ({"source": "metric", "ref": "queue_depth"},),
+            },
+        ),
+        "can_clarify": True,
         "can_stop": True,
         "stopped_early": False,
     }
@@ -49,6 +60,8 @@ def test_practice_template_renders_latest_coaching_and_collapses_history() -> No
     assert "Your last decision" in html
     assert "Pause new work" in html
     assert "Interpretation" in html
+    assert "Assessment · partially effective" in html
+    assert "Plan recognized" in html
     assert "Limits additional checkout failures." in html
     assert "queue_depth" in html
     assert "<details class=\"prior-turns\">" in html
@@ -56,7 +69,23 @@ def test_practice_template_renders_latest_coaching_and_collapses_history() -> No
     assert "End simulation and review" in html
     assert "This is final" in html
     assert "The queue continues to climb." in html
+    assert "Ask a clarification" in html
+    assert "will not suggest actions, evaluate choices, or give hints" in html
+    assert "What is the queue depth?" in html
+    assert "The queue depth is 1,200 jobs." in html
+    assert 'action="/practice/practice-1/clarifications"' in html
     assert "Write what you would do first and why." not in html
+
+
+def test_practice_template_does_not_invent_a_remaining_risk() -> None:
+    session = _session()
+    session["latest_turn"] = {**session["latest_turn"], "disposition": "accepted", "risk": None}
+    session["prior_turns"] = ()
+
+    html = _environment().get_template("dojo_practice.html").render(session=session)
+
+    assert "Assessment · accepted" in html
+    assert "Remaining risk" not in html
 
 
 def test_briefing_uses_clear_labels_and_one_first_decision_prompt() -> None:
@@ -66,6 +95,7 @@ def test_briefing_uses_clear_labels_and_one_first_decision_prompt() -> None:
     session["prior_turns"] = ()
     session["situational_update"] = None
     session["can_stop"] = False
+    session["can_clarify"] = True
     session["timeline"] = (
         {
             "time": "T-15m",
@@ -142,6 +172,62 @@ def test_entry_template_keeps_progressive_form_contract() -> None:
     assert "~15 years" in html
     assert "Enter the dojo" in html
     assert 'data-loading-title="Preparing your situation"' in html
+
+
+def test_profile_templates_keep_proposal_execution_and_outcome_distinct() -> None:
+    profile = {
+        "display_name": "Ami",
+        "headline": "Engineer practicing incident leadership",
+        "bio": "",
+    }
+    cases = (
+        {
+            "id": "practice-1",
+            "title": "The queue is climbing",
+            "field": "Software operations",
+            "difficulty_level": 4,
+            "status": "resolved",
+            "status_label": "Resolved",
+            "score": 82,
+            "summary": "Checkout jobs are timing out.",
+            "proposed_solution": "Pause new work, then inspect the leases.",
+            "turn_count": 2,
+        },
+    )
+    profile_html = _environment().get_template("dojo_profile.html").render(
+        profile=profile,
+        stats={"encountered": 1, "resolved": 1, "reviewed": 0, "active": 0},
+        cases=cases,
+    )
+    case_html = _environment().get_template("dojo_case.html").render(
+        case={
+            **cases[0],
+            "role": "Incident commander",
+            "outcome_label": "Recovered",
+            "first_decision": "What do you do first?",
+            "constraints": ("Protect active checkouts.",),
+            "turns": (
+                {
+                    "response": "Pause new work, then inspect the leases.",
+                    "recognized_intents": ("Pause new work", "Inspect leases"),
+                    "action_label": "pause dispatch",
+                    "disposition_label": "accepted",
+                    "outcome_label": "Recovered",
+                    "strength": "Contained demand.",
+                    "risk": None,
+                },
+            ),
+            "debrief": None,
+        }
+    )
+
+    assert "Problem portfolio" in profile_html
+    assert "82/100" in profile_html
+    assert 'action="/profile"' in profile_html
+    assert "What you proposed—and what happened" in case_html
+    assert "Executed action" in case_html
+    assert "Resulting state" in case_html
+    assert "not verified workplace experience" in case_html
 
 
 def test_llm_forms_share_accessible_branded_loading_contract() -> None:

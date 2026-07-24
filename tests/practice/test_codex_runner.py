@@ -17,7 +17,11 @@ from apprentice.practice.codex_runner import (
     CodexStructuredRunner,
     CodexTimeoutError,
 )
-from apprentice.practice.contracts import FacilitatorDecision, FinalDebrief
+from apprentice.practice.contracts import (
+    ClarificationResponse,
+    FacilitatorDecision,
+    FinalDebrief,
+)
 
 
 class Result(BaseModel):
@@ -59,6 +63,8 @@ def test_runner_uses_isolated_hardened_codex_command_and_stdin(
     monkeypatch.setenv("OPENAI_API_KEY", "must-not-leak")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-leak")
     monkeypatch.setenv("UNRELATED_SECRET", "must-not-leak")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "must-not-leak")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "must-not-leak")
     fake = FakeCommand()
 
     result = CodexStructuredRunner(run_command=fake, timeout_seconds=17)(
@@ -123,6 +129,8 @@ def test_runner_uses_isolated_hardened_codex_command_and_stdin(
     assert "OPENAI_API_KEY" not in kwargs["env"]
     assert "ANTHROPIC_API_KEY" not in kwargs["env"]
     assert "UNRELATED_SECRET" not in kwargs["env"]
+    assert "LANGFUSE_PUBLIC_KEY" not in kwargs["env"]
+    assert "LANGFUSE_SECRET_KEY" not in kwargs["env"]
     assert "Use only canonical evidence." in kwargs["input"]
     assert "Do not use tools, web search" in kwargs["input"]
 
@@ -170,21 +178,27 @@ def test_facilitator_schema_requires_nullable_fields_and_assessment_evidence() -
 
     assert set(schema["required"]) == {
         "action_kind",
+        "prerequisite_override",
+        "override_justification",
         "requires_clarification",
         "coaching_question",
         "assessment",
     }
     assert set(schema["$defs"]["DecisionAssessment"]["required"]) == {
+        "disposition",
         "response_excerpt",
         "interpretation",
+        "recognized_intents",
         "strength",
         "risk",
         "evidence",
     }
     action_variants = schema["properties"]["action_kind"]["anyOf"]
     coaching_variants = schema["properties"]["coaching_question"]["anyOf"]
+    risk_variants = schema["$defs"]["DecisionAssessment"]["properties"]["risk"]["anyOf"]
     assert {variant.get("type") for variant in action_variants} == {"string", "null"}
     assert {variant.get("type") for variant in coaching_variants} == {"string", "null"}
+    assert {variant.get("type") for variant in risk_variants} == {"string", "null"}
 
 
 def test_final_debrief_schema_requires_nullable_score_fields_for_legacy_compatibility() -> None:
@@ -195,6 +209,18 @@ def test_final_debrief_schema_requires_nullable_score_fields_for_legacy_compatib
         "integer",
         "null",
     }
+
+
+def test_clarification_schema_requires_status_answer_and_grounding() -> None:
+    schema = ClarificationResponse.model_json_schema()
+
+    assert set(schema["required"]) == {"status", "answer", "evidence"}
+    assert schema["properties"]["status"]["enum"] == [
+        "answered",
+        "refused",
+        "unavailable",
+    ]
+    assert schema["properties"]["evidence"]["maxItems"] == 6
 
 
 def test_missing_cli_has_actionable_safe_error() -> None:
