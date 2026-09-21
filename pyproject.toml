@@ -51,7 +51,7 @@ dev = [
   "httpx>=0.28",
   "openai>=1.68",
   "pytest>=8.3",
-  "ruff>=0.9",
+  "ruff>=0.16.8",
 ]
 
 [tool.hatch.build.targets.wheel]
