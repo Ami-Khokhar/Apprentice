@@ -8,7 +8,7 @@ import os
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -123,9 +123,16 @@ class LocalTraceStore:
             bounded = _bounded_record(record, self.content_limit_bytes)
             line = json.dumps(bounded, default=str, separators=(",", ":"), sort_keys=True)
             with self._lock:
-                self.path.parent.mkdir(parents=True, exist_ok=True)
+                _ensure_private_directory(self.path.parent)
+                _harden_private_file(self.path)
                 self._prune_if_due()
-                with self.path.open("a", encoding="utf-8") as stream:
+                descriptor = os.open(
+                    self.path,
+                    os.O_APPEND | os.O_CREAT | os.O_WRONLY,
+                    0o600,
+                )
+                _harden_private_file(self.path)
+                with os.fdopen(descriptor, "a", encoding="utf-8") as stream:
                     stream.write(line + "\n")
                     stream.flush()
         except Exception as error:  # tracing must never interrupt a learner
@@ -134,6 +141,7 @@ class LocalTraceStore:
     def records(self, session_id: str | None = None) -> list[dict[str, object]]:
         try:
             with self._lock:
+                _harden_private_file(self.path)
                 self._prune_if_due()
                 records = self._read_unlocked()
         except Exception as error:
@@ -177,16 +185,21 @@ class LocalTraceStore:
             return
         cutoff = now - timedelta(days=self.retention_days).total_seconds()
         kept = [
-            item
-            for item in self._read_unlocked()
-            if float(item.get("started_at", 0)) >= cutoff
+            item for item in self._read_unlocked() if float(item.get("started_at", 0)) >= cutoff
         ]
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        with temporary.open("w", encoding="utf-8") as stream:
+        descriptor = os.open(
+            temporary,
+            os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+            0o600,
+        )
+        _harden_private_file(temporary)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             for item in kept:
                 stream.write(json.dumps(item, separators=(",", ":"), sort_keys=True) + "\n")
             stream.flush()
         temporary.replace(self.path)
+        _harden_private_file(self.path)
 
 
 class _LocalObservation:
@@ -284,7 +297,7 @@ class LocalTracer:
             yield observation
         except BaseException as error:
             record["status"] = "error"
-            record["error"] = {"type": type(error).__name__, "message": str(error)[:500]}
+            record["error"] = self._policy.exception(error)
             raise
         else:
             record["status"] = "success"
@@ -300,9 +313,7 @@ class LocalTracer:
             self.store.append(record)
 
 
-_current_session_id: ContextVar[str | None] = ContextVar(
-    "apprentice_trace_session", default=None
-)
+_current_session_id: ContextVar[str | None] = ContextVar("apprentice_trace_session", default=None)
 
 
 class _CompositeObservation:
@@ -342,6 +353,7 @@ class CompositeTracer:
             ]
             yield _CompositeObservation(observations)
 
+
 @dataclass(frozen=True)
 class TraceDataPolicy:
     capture_content: bool = False
@@ -361,6 +373,14 @@ class TraceDataPolicy:
         elif isinstance(sanitized, (list, tuple)):
             summary["item_count"] = len(sanitized)
         return summary
+
+    def exception(self, error: BaseException) -> dict[str, object]:
+        result: dict[str, object] = {"type": type(error).__name__}
+        if self.capture_content:
+            result["message"] = redact(str(error)[:500])
+        else:
+            result["content_recorded"] = False
+        return result
 
 
 class _LangfuseObservation:
@@ -429,8 +449,10 @@ class LangfuseTracer:
         try:
             yield _LangfuseObservation(raw, self._policy)
         except BaseException as error:
-            _safe_exit(attributes, type(error), error, error.__traceback__)
-            _safe_exit(manager, type(error), error, error.__traceback__)
+            _record_langfuse_error(raw, self._policy, error)
+            exc_info = _langfuse_exc_info(self._policy, error)
+            _safe_exit(attributes, *exc_info)
+            _safe_exit(manager, *exc_info)
             raise
         else:
             _safe_exit(attributes, None, None, None)
@@ -463,7 +485,8 @@ class LangfuseTracer:
         try:
             yield _LangfuseObservation(raw, self._policy)
         except BaseException as error:
-            _safe_exit(manager, type(error), error, error.__traceback__)
+            _record_langfuse_error(raw, self._policy, error)
+            _safe_exit(manager, *_langfuse_exc_info(self._policy, error))
             raise
         else:
             _safe_exit(manager, None, None, None)
@@ -479,9 +502,7 @@ def build_tracer(
     if _enabled(environment.get("APPRENTICE_OBSERVER_ENABLED")):
         store = local_store or LocalTraceStore(
             environment.get("APPRENTICE_TRACE_PATH", ".apprentice/traces.jsonl"),
-            retention_days=_positive_int(
-                environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30
-            ),
+            retention_days=_positive_int(environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30),
             content_limit_bytes=_positive_int(
                 environment.get("APPRENTICE_TRACE_CONTENT_LIMIT_BYTES"), 256_000
             ),
@@ -555,10 +576,7 @@ def redact(value: object) -> object:
 def _metadata(value: Mapping[str, object]) -> dict[str, str]:
     sanitized = redact(value)
     assert isinstance(sanitized, Mapping)
-    return {
-        str(key): str(item)[:200]
-        for key, item in sanitized.items()
-    }
+    return {str(key): str(item)[:200] for key, item in sanitized.items()}
 
 
 def _enabled(value: str | None) -> bool:
@@ -589,6 +607,49 @@ def _safe_exit(manager: Any, *exc_info: object) -> None:
         LOGGER.warning("Langfuse operation could not finish: %s", type(error).__name__)
 
 
+def _record_langfuse_error(
+    observation: Any,
+    policy: TraceDataPolicy,
+    error: BaseException,
+) -> None:
+    try:
+        observation.update(metadata={"error": policy.exception(error)})
+    except Exception as update_error:
+        LOGGER.warning(
+            "Langfuse observation update failed: %s",
+            type(update_error).__name__,
+        )
+
+
+def _langfuse_exc_info(
+    policy: TraceDataPolicy,
+    error: BaseException,
+) -> tuple[object | None, object | None, object | None]:
+    if not policy.capture_content:
+        return None, None, None
+    return type(error), error, error.__traceback__
+
+
+def _ensure_private_directory(path: Path) -> None:
+    existed = path.exists()
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if existed and path.name != ".apprentice":
+        # A configured trace file may live in a shared directory such as /tmp.
+        # Do not change permissions on a directory Apprentice did not create.
+        return
+    # Windows and some mounted filesystems do not expose POSIX modes.
+    with suppress(OSError):
+        path.chmod(0o700)
+
+
+def _harden_private_file(path: Path) -> None:
+    if not path.exists():
+        return
+    # Windows and some mounted filesystems do not expose POSIX modes.
+    with suppress(OSError):
+        path.chmod(0o600)
+
+
 def _bounded_record(record: Mapping[str, object], limit: int) -> dict[str, object]:
     value = dict(record)
     encoded = json.dumps(value, default=str, sort_keys=True).encode()
@@ -606,9 +667,7 @@ def _bounded_record(record: Mapping[str, object], limit: int) -> dict[str, objec
     return value
 
 
-def _session_summary(
-    session_id: str, records: Sequence[Mapping[str, object]]
-) -> dict[str, object]:
+def _session_summary(session_id: str, records: Sequence[Mapping[str, object]]) -> dict[str, object]:
     ordered = sorted(records, key=lambda item: float(item.get("started_at", 0)))
     operations = [item for item in ordered if item.get("kind") == "operation"]
     names = {str(item.get("name", "")) for item in operations}
@@ -621,9 +680,7 @@ def _session_summary(
         metadata = {}
     captured_input = first.get("input", {})
     profile = (
-        captured_input.get("learner_profile", {})
-        if isinstance(captured_input, Mapping)
-        else {}
+        captured_input.get("learner_profile", {}) if isinstance(captured_input, Mapping) else {}
     )
     if not isinstance(profile, Mapping):
         profile = {}

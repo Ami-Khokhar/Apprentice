@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -26,6 +27,7 @@ from apprentice.practice.service import (
     DEFAULT_PRACTICE_MODEL,
     InvalidPracticeResponseError,
     MemorySessionStore,
+    PracticeBusyError,
     PracticeNotReadyForDebriefError,
     PracticeService,
     PracticeSessionNotFoundError,
@@ -161,9 +163,8 @@ def decision(
         requires_clarification=clarification,
         coaching_question="Which concrete step comes first?" if clarification else None,
         assessment=DecisionAssessment(
-            disposition=disposition or (
-                "needs_clarification" if clarification else "partially_effective"
-            ),
+            disposition=disposition
+            or ("needs_clarification" if clarification else "partially_effective"),
             response_excerpt=excerpt,
             interpretation="You identified a concrete next step.",
             recognized_intents=("Take the proposed immediate step.",),
@@ -211,6 +212,49 @@ def test_service_defaults_to_locally_authenticated_codex_without_api_key(monkeyp
     service = PracticeService()
 
     assert isinstance(service._runner, CodexStructuredRunner)
+
+
+def test_model_call_single_flight_rejects_concurrency_and_releases_after_error() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    outputs = iter((RuntimeError("runner failed"), generated_spec()))
+
+    def blocking_runner(agent: AgentSpec, prompt: str) -> BaseModel:
+        output = next(outputs)
+        if isinstance(output, RuntimeError):
+            entered.set()
+            assert release.wait(timeout=2)
+            raise output
+        assert isinstance(output, GeneratedScenarioSpec)
+        return output.model_copy(
+            update={"generation_nonce": json.loads(prompt)["generation_nonce"]}
+        )
+
+    service = PracticeService(runner=blocking_runner)
+    first_error: list[Exception] = []
+
+    def run_first_call() -> None:
+        try:
+            service.start("supply chain analyst")
+        except Exception as error:
+            first_error.append(error)
+
+    first = threading.Thread(target=run_first_call)
+    first.start()
+    assert entered.wait(timeout=2)
+
+    with pytest.raises(PracticeBusyError):
+        service.start("supply chain analyst")
+
+    release.set()
+    first.join(timeout=2)
+    assert not first.is_alive()
+    assert len(first_error) == 1
+    assert isinstance(first_error[0], RuntimeError)
+
+    session = service.start("supply chain analyst")
+
+    assert session.profile.field == "supply chain analyst"
 
 
 def test_start_uses_one_terra_generator_without_authored_catalog() -> None:
@@ -414,9 +458,7 @@ def test_situation_clarification_is_grounded_persisted_and_never_advances_world(
     assert updated.world == before_world
     assert updated.turns == ()
     assert updated.clarifications[0].question == "When do the partner assets go live?"
-    assert updated.clarifications[0].response.answer == (
-        "The partner assets go live in six hours."
-    )
+    assert updated.clarifications[0].response.answer == ("The partner assets go live in six hours.")
     assert service.get_session(session.id).clarifications == updated.clarifications
     agent, raw_prompt = runner.calls[-1]
     prompt = json.loads(raw_prompt)
@@ -439,9 +481,7 @@ def test_situation_clarification_rejects_unobservable_evidence_without_saving() 
             generated_spec(),
             clarification(
                 "The duplicate was caused by a timezone conversion.",
-                evidence=(
-                    ClarificationReference(source="fact", ref="duplicate-orders"),
-                ),
+                evidence=(ClarificationReference(source="fact", ref="duplicate-orders"),),
             ),
         ]
     )

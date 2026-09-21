@@ -27,6 +27,7 @@ class AgentSpec:
     model: str
     output_type: type[BaseModel]
 
+
 _ALLOWED_ENVIRONMENT_VARIABLES = (
     "PATH",
     "HOME",
@@ -102,9 +103,7 @@ class CodexStructuredRunner:
             workdir = Path(directory)
             schema_path = workdir / "output-schema.json"
             output_path = workdir / "last-message.json"
-            schema_path.write_text(
-                json.dumps(output_type.model_json_schema()), encoding="utf-8"
-            )
+            schema_path.write_text(json.dumps(output_type.model_json_schema()), encoding="utf-8")
 
             command = self._command(workdir, schema_path, output_path, agent.model)
             request = self._request(agent, prompt)
@@ -153,9 +152,7 @@ class CodexStructuredRunner:
                 ) from None
 
     @staticmethod
-    def _command(
-        workdir: Path, schema_path: Path, output_path: Path, model: str
-    ) -> Sequence[str]:
+    def _command(workdir: Path, schema_path: Path, output_path: Path, model: str) -> Sequence[str]:
         return (
             "codex",
             "exec",
@@ -197,9 +194,7 @@ class CodexStructuredRunner:
     def _environment() -> dict[str, str]:
         """Return only environment values required to locate and authenticate Codex."""
         return {
-            name: os.environ[name]
-            for name in _ALLOWED_ENVIRONMENT_VARIABLES
-            if name in os.environ
+            name: os.environ[name] for name in _ALLOWED_ENVIRONMENT_VARIABLES if name in os.environ
         }
 
     @staticmethod

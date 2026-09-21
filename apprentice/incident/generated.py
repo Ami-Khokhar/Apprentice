@@ -317,9 +317,7 @@ class GeneratedScenarioSpec(GeneratedModel):
                         "at_minute": event.at_minute,
                         "detail": _normalize(event.detail),
                         "effects": _effect_projection(event.metric_effects, metric_refs),
-                        "reveals": sorted(
-                            artifact_refs[ref] for ref in event.reveals_artifacts
-                        ),
+                        "reveals": sorted(artifact_refs[ref] for ref in event.reveals_artifacts),
                         "terminal": event.terminal,
                     }
                     for event in self.timed_escalations
@@ -437,10 +435,7 @@ def _has_recovery_path(spec: GeneratedScenarioSpec) -> bool:
             next_fired = set(fired)
             terminal = False
             for event in event_defs:
-                if (
-                    event.id in next_fired
-                    or not sim_time < event.at_minute <= next_time
-                ):
+                if event.id in next_fired or not sim_time < event.at_minute <= next_time:
                     continue
                 _apply_projected_effects(next_metrics, metric_defs, event.metric_effects)
                 next_revealed |= set(event.reveals_artifacts)
@@ -485,14 +480,12 @@ def _requirements_met(
             return False
         if requirement.kind == "artifact_revealed" and requirement.ref not in revealed:
             return False
-        if (
-            requirement.kind == "metric_at_most"
-            and metrics[requirement.ref] > float(requirement.threshold)
+        if requirement.kind == "metric_at_most" and metrics[requirement.ref] > float(
+            requirement.threshold
         ):
             return False
-        if (
-            requirement.kind == "metric_at_least"
-            and metrics[requirement.ref] < float(requirement.threshold)
+        if requirement.kind == "metric_at_least" and metrics[requirement.ref] < float(
+            requirement.threshold
         ):
             return False
     return True
@@ -787,14 +780,12 @@ class GeneratedScenarioRuntime:
                 return False
             if requirement.kind == "artifact_revealed" and requirement.ref not in revealed:
                 return False
-            if (
-                requirement.kind == "metric_at_most"
-                and float(metrics[requirement.ref]) > float(requirement.threshold)
+            if requirement.kind == "metric_at_most" and float(metrics[requirement.ref]) > float(
+                requirement.threshold
             ):
                 return False
-            if (
-                requirement.kind == "metric_at_least"
-                and float(metrics[requirement.ref]) < float(requirement.threshold)
+            if requirement.kind == "metric_at_least" and float(metrics[requirement.ref]) < float(
+                requirement.threshold
             ):
                 return False
         return True

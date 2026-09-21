@@ -155,6 +155,22 @@ main {
   padding-block: clamp(1.5rem, 4.5vh, 3.5rem) 5rem;
 }
 
+.key-panel {
+  margin-block-end: 2.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: var(--paper-deep);
+}
+
+.key-panel .key-form {
+  gap: 1rem;
+}
+
+.key-panel .field-hint {
+  margin-block-start: 0.5rem;
+}
+
 .decision-view {
   min-height: calc(100vh - 72px);
   padding-block: clamp(2.75rem, 8vh, 6rem) 5rem;

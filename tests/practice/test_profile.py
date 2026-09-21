@@ -17,9 +17,7 @@ def profile_service(path: Path, runner: FakeRunner) -> tuple[PracticeService, SQ
 
 
 def test_profile_identity_defaults_validates_and_persists(tmp_path: Path) -> None:
-    service, database = profile_service(
-        tmp_path / "dojo.sqlite3", FakeRunner([generated_spec()])
-    )
+    service, database = profile_service(tmp_path / "dojo.sqlite3", FakeRunner([generated_spec()]))
 
     default = service.get_judgment_profile()
     assert default.display_name == "Apprentice learner"
@@ -48,9 +46,7 @@ def test_profile_identity_defaults_validates_and_persists(tmp_path: Path) -> Non
 def test_existing_sessions_project_to_cases_with_solutions_and_status_counts(
     tmp_path: Path,
 ) -> None:
-    resolved_response = (
-        "Revert the implicated overnight upload change, then validate the release."
-    )
+    resolved_response = "Revert the implicated overnight upload change, then validate the release."
     reviewed_response = "Inspect the pipeline before making another change."
     runner = FakeRunner(
         [
@@ -103,9 +99,7 @@ def test_existing_sessions_project_to_cases_with_solutions_and_status_counts(
     assert resolved_case.score == 82
     assert resolved_case.turns[0].response == resolved_response
     assert resolved_case.turns[0].action_kind == "correct-and-reforecast"
-    assert resolved_case.turns[0].recognized_intents == (
-        "Take the proposed immediate step.",
-    )
+    assert resolved_case.turns[0].recognized_intents == ("Take the proposed immediate step.",)
     assert resolved_case.debrief is not None
     assert {(item.source, item.ref) for item in resolved_case.evidence} == {
         ("action", "correct-and-reforecast"),

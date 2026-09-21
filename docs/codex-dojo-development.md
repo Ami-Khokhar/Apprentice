@@ -31,12 +31,15 @@ ChatGPT/Codex login. It does not require `OPENAI_API_KEY` for the learner flow.
 The subprocess receives a minimal environment and has shell, browser, apps,
 plugins, image generation, multi-agent tools, and web search disabled.
 
-Terra has two bounded responsibilities:
+Terra has four bounded responsibilities:
 
 - invent one structured professional stress-test specification from the
-  learner's field and optional work context; and
-- interpret a learner's free-text response as at most one currently enabled
-  action, then write a grounded debrief.
+  learner's field and optional work context;
+- interpret a learner's free-text response as at most one immediate action or a
+  defensible unmodelled decision;
+- answer factual clarification questions from currently observable evidence;
+  and
+- write a grounded debrief from the frozen world and learner transcript.
 
 Terra does not mutate a running simulation. Generated facts, metrics, evidence,
 actions, prerequisites, effects, escalation events, success requirements, and
@@ -62,6 +65,6 @@ decision advanced the second generated action graph.
 ## Verification
 
 The suite covers deterministic simulation, semantic validation, duplicate
-rejection, restart restoration, facilitator evidence boundaries, API behavior,
-and dojo templates. The keyless Codex/Terra path was also exercised against the
-real locally authenticated CLI.
+rejection, restart restoration, facilitator evidence boundaries, clarification,
+profiles, observability, API behavior, and dojo templates. The keyless
+Codex/Terra path was also exercised against the real locally authenticated CLI.

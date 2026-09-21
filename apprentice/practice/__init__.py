@@ -19,6 +19,7 @@ from .contracts import (
 )
 from .service import (
     InvalidPracticeResponseError,
+    PracticeBusyError,
     PracticeNotReadyForDebriefError,
     PracticeService,
     PracticeSessionNotFoundError,
@@ -38,6 +39,7 @@ __all__ = [
     "LearnerProfile",
     "PortfolioCase",
     "PortfolioTurn",
+    "PracticeBusyError",
     "PracticeNotReadyForDebriefError",
     "PracticeService",
     "PracticeSession",

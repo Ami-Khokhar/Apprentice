@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable, Mapping
 from copy import deepcopy
@@ -11,7 +12,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from apprentice.database import SQLiteDatabase
+from apprentice.database import CURRENT_OWNER_ID, SQLiteDatabase
 from apprentice.incident.generated import (
     GeneratedScenarioError,
     GeneratedScenarioRuntime,
@@ -41,6 +42,8 @@ from .contracts import (
 TOutput = TypeVar("TOutput", bound=BaseModel)
 StructuredRunner = Callable[[AgentSpec, str], BaseModel]
 DEFAULT_PRACTICE_MODEL = "gpt-5.6-terra"
+
+MAX_TRACKED_OWNERS = 512
 MAX_GENERATION_ATTEMPTS = 3
 DIFFICULTY_DESCRIPTIONS = (
     "Topic knowledge but no practical field experience; use one clear problem, direct evidence, "
@@ -76,6 +79,10 @@ class InvalidPracticeResponseError(ValueError):
 
 class PracticeNotReadyForDebriefError(ValueError):
     pass
+
+
+class PracticeBusyError(RuntimeError):
+    """Raised when another model-backed practice operation is already running."""
 
 
 class SessionStore(Protocol):
@@ -124,8 +131,13 @@ class MemorySessionStore:
 
 
 class SQLiteSessionStore:
-    def __init__(self, database: SQLiteDatabase) -> None:
+    def __init__(self, database: SQLiteDatabase, owner_id: str | None = None) -> None:
         self._database = database
+        self._owner_id = owner_id
+
+    def _owner(self) -> str:
+        """Return the pinned owner, or the owner of the request in flight."""
+        return self._owner_id if self._owner_id is not None else CURRENT_OWNER_ID.get()
 
     def get(self, session_id: str) -> PracticeSession | None:
         with self._database.transaction() as connection:
@@ -134,9 +146,10 @@ class SQLiteSessionStore:
                 SELECT session_json
                 FROM practice_sessions
                 WHERE id = ?
+                  AND owner_id = ?
                   AND json_type(session_json, '$.generated_spec') = 'object'
                 """,
-                (session_id,),
+                (session_id, self._owner()),
             ).fetchone()
         return None if row is None else PracticeSession.model_validate_json(row["session_json"])
 
@@ -145,15 +158,17 @@ class SQLiteSessionStore:
             connection.execute(
                 """
                 INSERT INTO practice_sessions(
-                  id, incident_id, session_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?)
+                  id, incident_id, owner_id, session_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   session_json = excluded.session_json,
                   updated_at = excluded.updated_at
+                WHERE practice_sessions.owner_id = excluded.owner_id
                 """,
                 (
                     session.id,
                     session.incident_id,
+                    self._owner(),
                     session.model_dump_json(),
                     session.created_at,
                     session.updated_at,
@@ -166,9 +181,11 @@ class SQLiteSessionStore:
                 """
                 SELECT session_json
                 FROM practice_sessions
-                WHERE json_type(session_json, '$.generated_spec') = 'object'
+                WHERE owner_id = ?
+                  AND json_type(session_json, '$.generated_spec') = 'object'
                 ORDER BY created_at DESC
-                """
+                """,
+                (self._owner(),),
             ).fetchall()
         return tuple(PracticeSession.model_validate_json(row["session_json"]) for row in rows)
 
@@ -178,8 +195,9 @@ class SQLiteSessionStore:
                 """
                 SELECT display_name, headline, bio, updated_at
                 FROM judgment_profile
-                WHERE singleton_id = 1
-                """
+                WHERE owner_id = ?
+                """,
+                (self._owner(),),
             ).fetchone()
         if row is None:
             return JudgmentProfileIdentity()
@@ -195,15 +213,16 @@ class SQLiteSessionStore:
             connection.execute(
                 """
                 INSERT INTO judgment_profile(
-                  singleton_id, display_name, headline, bio, updated_at
-                ) VALUES (1, ?, ?, ?, ?)
-                ON CONFLICT(singleton_id) DO UPDATE SET
+                  owner_id, display_name, headline, bio, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(owner_id) DO UPDATE SET
                   display_name = excluded.display_name,
                   headline = excluded.headline,
                   bio = excluded.bio,
                   updated_at = excluded.updated_at
                 """,
                 (
+                    self._owner(),
                     identity.display_name,
                     identity.headline,
                     identity.bio,
@@ -230,14 +249,29 @@ class PracticeService:
         runner: StructuredRunner | None = None,
         model: str = DEFAULT_PRACTICE_MODEL,
         store: SessionStore | None = None,
+        owner_id: str | None = None,
         generated_runtime: GeneratedScenarioRuntime | None = None,
         tracer: Tracer | None = None,
     ) -> None:
         self._runner = runner if runner is not None else CodexStructuredRunner(timeout_seconds=120)
         self._model = model
-        self._store = store or (SQLiteSessionStore(database) if database else MemorySessionStore())
+        self._store = store or (
+            SQLiteSessionStore(database, owner_id) if database else MemorySessionStore()
+        )
         self._generated_runtime = generated_runtime or GeneratedScenarioRuntime()
         self._tracer = tracer if tracer is not None else build_tracer()
+        self._model_call_locks: dict[str, threading.Lock] = {}
+        self._lock_registry = threading.Lock()
+
+    def _owner_lock(self) -> threading.Lock:
+        """Return the model-call lock for this owner, so one learner cannot block another."""
+        owner = CURRENT_OWNER_ID.get()
+        with self._lock_registry:
+            if len(self._model_call_locks) > MAX_TRACKED_OWNERS:
+                self._model_call_locks = {
+                    key: lock for key, lock in self._model_call_locks.items() if lock.locked()
+                }
+            return self._model_call_locks.setdefault(owner, threading.Lock())
 
     def start(
         self, field: str, work_context: str | None = None, difficulty_level: int = 1
@@ -272,9 +306,7 @@ class PracticeService:
                             "retry_reason": retry_reason or "initial_attempt",
                         },
                         result_metadata=lambda output, expected_nonce=nonce: (
-                            self._generation_result_metadata(
-                                output, expected_nonce, history
-                            )
+                            self._generation_result_metadata(output, expected_nonce, history)
                         ),
                     )
                 except CodexOutputError as error:
@@ -589,9 +621,7 @@ class PracticeService:
                 "ending_reason": self._ending_reason(session),
             },
         ) as trace:
-            debrief = self._run(
-                self._debrief_agent(), self._debrief_prompt(session), FinalDebrief
-            )
+            debrief = self._run(self._debrief_agent(), self._debrief_prompt(session), FinalDebrief)
             if debrief.score is None or debrief.score_rationale is None:
                 raise InvalidPracticeResponseError("The new debrief did not include a score")
             self._validate_evidence(
@@ -722,24 +752,30 @@ class PracticeService:
         metadata: dict[str, object] | None = None,
         result_metadata: Callable[[TOutput], Mapping[str, object]] | None = None,
     ) -> TOutput:
-        with self._tracer.generation(
-            agent.name,
-            model=agent.model,
-            output_schema=output_type.__name__,
-            input={"instructions": agent.instructions, "prompt": prompt},
-            metadata={"agent_name": agent.name, **(metadata or {})},
-        ) as trace:
-            output = self._runner(agent, prompt)
-            if not isinstance(output, output_type):
-                raise TypeError(
-                    f"Practice runner returned {type(output).__name__}; "
-                    f"expected {output_type.__name__}"
+        model_call_lock = self._owner_lock()
+        if not model_call_lock.acquire(blocking=False):
+            raise PracticeBusyError("Another model-backed practice operation is already running")
+        try:
+            with self._tracer.generation(
+                agent.name,
+                model=agent.model,
+                output_schema=output_type.__name__,
+                input={"instructions": agent.instructions, "prompt": prompt},
+                metadata={"agent_name": agent.name, **(metadata or {})},
+            ) as trace:
+                output = self._runner(agent, prompt)
+                if not isinstance(output, output_type):
+                    raise TypeError(
+                        f"Practice runner returned {type(output).__name__}; "
+                        f"expected {output_type.__name__}"
+                    )
+                trace.update(
+                    output=output,
+                    metadata=result_metadata(output) if result_metadata is not None else None,
                 )
-            trace.update(
-                output=output,
-                metadata=result_metadata(output) if result_metadata is not None else None,
-            )
-            return output
+                return output
+        finally:
+            model_call_lock.release()
 
     @staticmethod
     def _generation_result_metadata(
@@ -765,9 +801,7 @@ class PracticeService:
                 "learner_profile": profile.model_dump(mode="json"),
                 "difficulty_calibration": {
                     "selected_level": profile.difficulty_level,
-                    "learner_experience": DIFFICULTY_DESCRIPTIONS[
-                        profile.difficulty_level - 1
-                    ],
+                    "learner_experience": DIFFICULTY_DESCRIPTIONS[profile.difficulty_level - 1],
                     "scale_anchors": {
                         "1": (
                             "Topic knowledge, no practical field experience; keep the situation "
@@ -915,8 +949,7 @@ class PracticeService:
                 "canonical_world": session.world,
                 "ending_reason": PracticeService._ending_reason(session),
                 "weighted_rubric": [
-                    criterion.model_dump(mode="json")
-                    for criterion in session.generated_spec.rubric
+                    criterion.model_dump(mode="json") for criterion in session.generated_spec.rubric
                 ],
                 "scoring_evidence": PracticeService._debrief_evidence(session.world),
                 "learner_turns": [turn.model_dump(mode="json") for turn in session.turns],
@@ -1014,10 +1047,7 @@ class PracticeService:
     ) -> Literal["active", "recovered", "terminal_escalation"]:
         if session.world.get("completed") and session.world.get("outcome") == "recovered":
             return "recovered"
-        if (
-            session.world.get("terminal")
-            or session.world.get("outcome") == "terminal_escalation"
-        ):
+        if session.world.get("terminal") or session.world.get("outcome") == "terminal_escalation":
             return "terminal_escalation"
         return "active"
 
@@ -1141,9 +1171,7 @@ class PracticeService:
                     for index, _item in enumerate(session.scenario.immediate_constraints)
                 ),
             ],
-            "fact": sorted(
-                fact.id for fact in session.generated_spec.facts if fact.known_at_start
-            ),
+            "fact": sorted(fact.id for fact in session.generated_spec.facts if fact.known_at_start),
             "event": sorted(events),
             "artifact": sorted(str(item["id"]) for item in world.get("artifacts", [])),
             "metric": sorted(str(key) for key in world.get("metrics", {})),

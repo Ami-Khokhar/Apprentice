@@ -3,8 +3,10 @@ from __future__ import annotations
 import hmac
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Form, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -12,11 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 
-from apprentice.database import SQLiteDatabase
+from apprentice.database import CURRENT_OWNER_ID, SQLiteDatabase
 from apprentice.observability import LocalTraceStore, build_tracer, enabled
 from apprentice.practice import (
     FinalDebrief,
     InvalidPracticeResponseError,
+    PracticeBusyError,
     PracticeNotReadyForDebriefError,
     PracticeService,
     PracticeSession,
@@ -29,6 +32,12 @@ from apprentice.practice.codex_runner import (
     CodexOutputError,
     CodexTimeoutError,
 )
+from apprentice.practice.openai_runner import CURRENT_API_KEY, OpenAIStructuredRunner
+
+VISITOR_COOKIE = "apprentice_visitor"
+API_KEY_COOKIE = "apprentice_api_key"
+_VISITOR_ID = re.compile(r"\A[A-Za-z0-9_-]{16,64}\Z")
+_API_KEY = re.compile(r"\A[A-Za-z0-9_.\-]{20,200}\Z")
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -75,25 +84,31 @@ def build_app(
 
     environment = os.environ if environ is None else environ
     observer_enabled = enabled(environment.get("APPRENTICE_OBSERVER_ENABLED"))
+    multi_user = enabled(environment.get("APPRENTICE_MULTI_USER"))
+    public_host = environment.get("APPRENTICE_PUBLIC_HOST", "").strip().lower()
     observer_token = environment.get("APPRENTICE_OBSERVER_TOKEN", "")
     if observer_enabled and not observer_token:
         raise ValueError(
             "APPRENTICE_OBSERVER_TOKEN is required when APPRENTICE_OBSERVER_ENABLED=true"
         )
-    database = database or SQLiteDatabase(db_path or "apprentice.db")
+    database = database or SQLiteDatabase(
+        db_path or environment.get("APPRENTICE_DB_PATH") or "apprentice.db"
+    )
     if observer_enabled and trace_store is None:
         trace_store = LocalTraceStore(
             environment.get("APPRENTICE_TRACE_PATH", ".apprentice/traces.jsonl"),
-            retention_days=_environment_int(
-                environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30
-            ),
+            retention_days=_environment_int(environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30),
             content_limit_bytes=_environment_int(
                 environment.get("APPRENTICE_TRACE_CONTENT_LIMIT_BYTES"), 256_000
             ),
         )
+    practice_model = environment.get("APPRENTICE_PRACTICE_MODEL", "").strip()
+    if multi_user and not practice_model:
+        raise ValueError("APPRENTICE_PRACTICE_MODEL is required when APPRENTICE_MULTI_USER=true")
     service = practice_service or PracticeService(
         database=database,
         tracer=build_tracer(environment, local_store=trace_store),
+        **({"runner": OpenAIStructuredRunner(), "model": practice_model} if multi_user else {}),
     )
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
@@ -102,6 +117,58 @@ def build_app(
     app.state.database = database
     app.state.practice_service = service
     app.state.trace_store = trace_store
+
+    allowed_hosts = {
+        "127.0.0.1",
+        "::1",
+        "localhost",
+        "testserver",
+    }
+    if multi_user and public_host:
+        allowed_hosts.add(public_host)
+    # A hosted deployment answers on its platform hostname. Enforce the allowlist there
+    # only when the operator has named that host.
+    enforce_hosts = not multi_user or bool(public_host)
+
+    @app.middleware("http")
+    async def enforce_local_request_boundary(request: Request, call_next):
+        if enforce_hosts and _request_hostname(request) not in allowed_hosts:
+            return _request_boundary_response(request, status.HTTP_400_BAD_REQUEST)
+        if not multi_user and not _is_loopback(request):
+            return _request_boundary_response(request, status.HTTP_403_FORBIDDEN)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and not _same_origin(request):
+            return _error_response(
+                status.HTTP_403_FORBIDDEN,
+                "cross_origin_request_rejected",
+                "Cross-origin state changes are not allowed.",
+            )
+        return await call_next(request)
+
+    if multi_user:
+
+        @app.middleware("http")
+        async def assign_visitor(request: Request, call_next):
+            """Give each browser its own owner id, so practice stays private to it."""
+            cookie = request.cookies.get(VISITOR_COOKIE, "")
+            visitor = cookie if _VISITOR_ID.fullmatch(cookie) else secrets.token_urlsafe(24)
+            supplied = request.cookies.get(API_KEY_COOKIE, "")
+            owner_token = CURRENT_OWNER_ID.set(visitor)
+            key_token = CURRENT_API_KEY.set(supplied if _API_KEY.fullmatch(supplied) else "")
+            try:
+                response = await call_next(request)
+            finally:
+                CURRENT_API_KEY.reset(key_token)
+                CURRENT_OWNER_ID.reset(owner_token)
+            if visitor != cookie:
+                response.set_cookie(
+                    VISITOR_COOKIE,
+                    visitor,
+                    max_age=60 * 60 * 24 * 30,
+                    httponly=True,
+                    samesite="lax",
+                    secure=request.url.scheme == "https",
+                )
+            return response
 
     @app.exception_handler(PracticeSessionNotFoundError)
     async def practice_not_found_handler(request: Request, error: PracticeSessionNotFoundError):
@@ -138,6 +205,19 @@ def build_app(
             message=str(error),
         )
 
+    @app.exception_handler(PracticeBusyError)
+    async def practice_busy_handler(request: Request, _error: PracticeBusyError):
+        response = _practice_error_response(
+            request,
+            templates,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            code="practice_busy",
+            title="The practice guide is busy",
+            message="Another practice turn is still being prepared. Try again shortly.",
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
     @app.exception_handler(CodexCLIUnavailableError)
     async def codex_unavailable_handler(request: Request, _error: CodexCLIUnavailableError):
         return _practice_error_response(
@@ -150,14 +230,18 @@ def build_app(
         )
 
     @app.exception_handler(CodexAuthenticationError)
-    async def codex_authentication_handler(request: Request, _error: CodexAuthenticationError):
+    async def codex_authentication_handler(request: Request, error: CodexAuthenticationError):
         return _practice_error_response(
             request,
             templates,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             code="codex_authentication_unavailable",
             title="The practice guide needs authentication",
-            message="Sign in with codex login, then return and try again.",
+            message=(
+                str(error.args[0])
+                if multi_user and error.args
+                else "Sign in with codex login, then return and try again."
+            ),
         )
 
     @app.exception_handler(CodexTimeoutError)
@@ -232,9 +316,7 @@ def build_app(
         profile = service.get_judgment_profile()
         return {
             "profile": profile.model_dump(mode="json"),
-            "cases": [
-                item.model_dump(mode="json") for item in service.list_portfolio_cases()
-            ],
+            "cases": [item.model_dump(mode="json") for item in service.list_portfolio_cases()],
         }
 
     @app.put("/api/profile")
@@ -249,7 +331,42 @@ def build_app(
 
     @app.get("/")
     def home(request: Request):
-        return templates.TemplateResponse(request, "dojo_entry.html", {})
+        return templates.TemplateResponse(
+            request,
+            "dojo_entry.html",
+            {
+                "hosted": multi_user,
+                "has_key": bool(CURRENT_API_KEY.get()),
+                "key_rejected": request.query_params.get("key") == "rejected",
+            },
+        )
+
+    if multi_user:
+
+        @app.post("/key")
+        def remember_api_key(
+            request: Request,
+            api_key: Annotated[str, Form(max_length=200)] = "",
+        ) -> RedirectResponse:
+            """Hold the learner's key in a session cookie. It is never written to disk."""
+            candidate = api_key.strip()
+            if not _API_KEY.fullmatch(candidate):
+                return RedirectResponse(url="/?key=rejected", status_code=status.HTTP_303_SEE_OTHER)
+            response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+            response.set_cookie(
+                API_KEY_COOKIE,
+                candidate,
+                httponly=True,
+                samesite="strict",
+                secure=request.url.scheme == "https",
+            )
+            return response
+
+        @app.post("/key/forget")
+        def forget_api_key() -> RedirectResponse:
+            response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+            response.delete_cookie(API_KEY_COOKIE)
+            return response
 
     @app.get("/profile", response_class=HTMLResponse)
     def judgment_profile_page(request: Request):
@@ -263,9 +380,7 @@ def build_app(
 
     @app.post("/profile")
     def update_judgment_profile_page(
-        display_name: Annotated[
-            str, Form(min_length=1, max_length=120, pattern=r".*\S.*")
-        ],
+        display_name: Annotated[str, Form(min_length=1, max_length=120, pattern=r".*\S.*")],
         headline: Annotated[str, Form(max_length=240)] = "",
         bio: Annotated[str, Form(max_length=2_000)] = "",
     ) -> RedirectResponse:
@@ -288,9 +403,7 @@ def build_app(
                 return False
             authorization = request.headers.get("authorization", "")
             bearer = authorization[7:] if authorization.casefold().startswith("bearer ") else ""
-            supplied = bearer or request.cookies.get(
-                "apprentice_observer", ""
-            )
+            supplied = bearer or request.cookies.get("apprentice_observer", "")
             return bool(supplied) and hmac.compare_digest(supplied, observer_token)
 
         @app.get("/observer", response_class=HTMLResponse)
@@ -307,9 +420,7 @@ def build_app(
                     "retention_days": _environment_int(
                         environment.get("APPRENTICE_TRACE_RETENTION_DAYS"), 30
                     ),
-                    "langfuse_enabled": enabled(
-                        environment.get("APPRENTICE_LANGFUSE_ENABLED")
-                    ),
+                    "langfuse_enabled": enabled(environment.get("APPRENTICE_LANGFUSE_ENABLED")),
                     "langfuse_base_url": environment.get("LANGFUSE_BASE_URL", ""),
                 },
             )
@@ -351,9 +462,7 @@ def build_app(
         work_description: Annotated[str | None, Form(max_length=2_000)] = None,
         difficulty_level: Annotated[int, Form(ge=1, le=10)] = 1,
     ) -> RedirectResponse:
-        session = service.start(
-            field.strip(), _optional_text(work_description), difficulty_level
-        )
+        session = service.start(field.strip(), _optional_text(work_description), difficulty_level)
         return RedirectResponse(
             url=f"/practice/{session.id}", status_code=status.HTTP_303_SEE_OTHER
         )
@@ -381,9 +490,7 @@ def build_app(
     @app.post("/practice/{session_id}/clarifications")
     def practice_clarification(
         session_id: str,
-        question: Annotated[
-            str, Form(min_length=1, max_length=2_000, pattern=r".*\S.*")
-        ],
+        question: Annotated[str, Form(min_length=1, max_length=2_000, pattern=r".*\S.*")],
     ) -> RedirectResponse:
         service.clarify(session_id, question.strip())
         return RedirectResponse(
@@ -426,7 +533,63 @@ def _observer_not_found() -> JSONResponse:
 
 
 def _is_loopback(request: Request) -> bool:
-    return bool(request.client) and request.client.host in {"127.0.0.1", "::1"}
+    return bool(request.client) and request.client.host in {
+        "127.0.0.1",
+        "::1",
+        "testclient",
+    }
+
+
+def _request_hostname(request: Request) -> str:
+    return _normalize_hostname(request.headers.get("host", ""))
+
+
+def _normalize_hostname(value: str) -> str:
+    candidate = value.strip().casefold()
+    if not candidate:
+        return ""
+    try:
+        parsed = urlsplit(f"//{candidate}")
+        if parsed.username is not None or parsed.password is not None:
+            return ""
+        if parsed.path or parsed.query or parsed.fragment:
+            return ""
+        _ = parsed.port
+        return (parsed.hostname or "").rstrip(".")
+    except ValueError:
+        return ""
+
+
+def _same_origin(request: Request) -> bool:
+    fetch_site = request.headers.get("sec-fetch-site", "").casefold()
+    if fetch_site and fetch_site not in {"same-origin", "none"}:
+        return False
+
+    supplied_url = request.headers.get("origin") or request.headers.get("referer")
+    if not supplied_url:
+        return True
+    try:
+        supplied = urlsplit(supplied_url)
+        expected = urlsplit(str(request.base_url))
+        supplied_port = supplied.port or _default_port(supplied.scheme)
+        expected_port = expected.port or _default_port(expected.scheme)
+    except ValueError:
+        return False
+    return (
+        supplied.scheme.casefold() == expected.scheme.casefold()
+        and (supplied.hostname or "").casefold() == (expected.hostname or "").casefold()
+        and supplied_port == expected_port
+    )
+
+
+def _default_port(scheme: str) -> int | None:
+    return {"http": 80, "https": 443}.get(scheme.casefold())
+
+
+def _request_boundary_response(request: Request, status_code: int) -> JSONResponse:
+    if request.url.path == "/observer" or request.url.path.startswith("/api/observer/"):
+        return _observer_not_found()
+    return JSONResponse(status_code=status_code, content={"detail": "Request rejected"})
 
 
 def _environment_int(value: str | None, default: int) -> int:
@@ -585,12 +748,9 @@ def _debrief_page_context(debrief: FinalDebrief) -> dict[str, object]:
     }
 
 
-def _profile_page_context(
-    profile: dict[str, object], cases: object
-) -> dict[str, object]:
+def _profile_page_context(profile: dict[str, object], cases: object) -> dict[str, object]:
     raw_cases = [
-        item.model_dump(mode="json") if hasattr(item, "model_dump") else item
-        for item in cases
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in cases
     ]
     presented_cases = [_portfolio_case_summary(item) for item in raw_cases]
     return {

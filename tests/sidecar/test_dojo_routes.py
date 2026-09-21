@@ -20,6 +20,7 @@ from apprentice.practice import (
     LearnerProfile,
     PortfolioCase,
     PortfolioTurn,
+    PracticeBusyError,
     PracticeNotReadyForDebriefError,
     PracticeSession,
     PracticeSessionNotFoundError,
@@ -114,9 +115,7 @@ class FakePracticeService:
             display_name="Apprentice learner",
             headline="",
             bio="",
-            counts=JudgmentProfileCounts(
-                encountered=1, resolved=0, reviewed=0, active=1
-            ),
+            counts=JudgmentProfileCounts(encountered=1, resolved=0, reviewed=0, active=1),
         )
         self.start_args: tuple[str, str | None, int] | None = None
         self.response: str | None = None
@@ -158,9 +157,7 @@ class FakePracticeService:
             response=ClarificationResponse(
                 status="answered",
                 answer="The queue depth is currently 1,200 jobs.",
-                evidence=(
-                    ClarificationReference(source="metric", ref="queue_depth"),
-                ),
+                evidence=(ClarificationReference(source="metric", ref="queue_depth"),),
             ),
         )
         self.session = self.session.model_copy(update={"clarifications": (exchange,)})
@@ -280,6 +277,92 @@ def test_legacy_routes_are_not_exposed(tmp_path, path: str) -> None:
     assert client.get(path).status_code == 404
 
 
+def test_request_boundary_rejects_untrusted_host_header(tmp_path) -> None:
+    client, _service = _client(tmp_path)
+
+    response = client.get("/api/profile", headers={"Host": "attacker.example"})
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Request rejected"}
+
+
+def test_request_boundary_rejects_non_loopback_client(tmp_path) -> None:
+    service = FakePracticeService()
+    app = build_app(
+        database=SQLiteDatabase(tmp_path / "apprentice.db"),
+        practice_service=service,
+    )
+    client = TestClient(app, client=("192.0.2.8", 50000))
+
+    response = client.get("/api/profile")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Request rejected"}
+
+
+def test_cross_origin_post_is_rejected_without_mutating_profile(tmp_path) -> None:
+    client, service = _client(tmp_path)
+    original = service.profile
+
+    response = client.put(
+        "/api/profile",
+        headers={"Origin": "https://attacker.example"},
+        json={"display_name": "Compromised", "headline": "", "bio": ""},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "cross_origin_request_rejected"
+    assert service.profile == original
+
+
+def test_cross_origin_practice_request_is_rejected_before_model_call(tmp_path) -> None:
+    client, service = _client(tmp_path)
+
+    response = client.post(
+        "/api/practice/sessions",
+        headers={"Origin": "https://attacker.example"},
+        json={"field": "Software operations", "difficulty_level": 4},
+    )
+
+    assert response.status_code == 403
+    assert service.start_args is None
+
+
+def test_same_origin_and_headerless_api_requests_are_allowed(tmp_path) -> None:
+    client, service = _client(tmp_path)
+
+    same_origin = client.put(
+        "/api/profile",
+        headers={"Origin": "http://testserver"},
+        json={"display_name": "Ami", "headline": "", "bio": ""},
+    )
+    api_client = client.put(
+        "/api/profile",
+        json={"display_name": "Ami API", "headline": "", "bio": ""},
+    )
+
+    assert same_origin.status_code == 200
+    assert api_client.status_code == 200
+    assert service.profile.display_name == "Ami API"
+
+
+def test_busy_model_error_returns_safe_retryable_response(tmp_path) -> None:
+    client, service = _client(tmp_path)
+    service.start_error = PracticeBusyError("internal concurrency detail")
+
+    response = client.post(
+        "/api/practice/sessions",
+        json={"field": "Software operations", "difficulty_level": 4},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "1"
+    assert response.json()["error"] == {
+        "code": "practice_busy",
+        "message": "Another practice turn is still being prepared. Try again shortly.",
+    }
+
+
 def test_practice_form_starts_session_and_redirects_to_briefing(tmp_path) -> None:
     client, service = _client(tmp_path)
 
@@ -299,9 +382,7 @@ def test_practice_form_starts_session_and_redirects_to_briefing(tmp_path) -> Non
 
 
 @pytest.mark.parametrize("difficulty_level", [0, 11])
-def test_practice_form_rejects_difficulty_outside_scale(
-    tmp_path, difficulty_level: int
-) -> None:
+def test_practice_form_rejects_difficulty_outside_scale(tmp_path, difficulty_level: int) -> None:
     client, service = _client(tmp_path)
 
     response = client.post(
@@ -470,9 +551,7 @@ def test_manual_stop_routes_freeze_and_redirect_to_debrief(tmp_path) -> None:
     client, service = _client(tmp_path)
     service.session = _session(with_turn=True)
 
-    html = client.post(
-        "/practice/practice-1/stop", follow_redirects=False
-    )
+    html = client.post("/practice/practice-1/stop", follow_redirects=False)
 
     assert html.status_code == 303
     assert html.headers["location"] == "/practice/practice-1/debrief"

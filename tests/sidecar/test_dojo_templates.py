@@ -64,7 +64,7 @@ def test_practice_template_renders_latest_coaching_and_collapses_history() -> No
     assert "Plan recognized" in html
     assert "Limits additional checkout failures." in html
     assert "queue_depth" in html
-    assert "<details class=\"prior-turns\">" in html
+    assert '<details class="prior-turns">' in html
     assert "Commit decision" in html
     assert "End simulation and review" in html
     assert "This is final" in html
@@ -122,12 +122,16 @@ def test_briefing_uses_clear_labels_and_one_first_decision_prompt() -> None:
 
 
 def test_error_template_uses_calm_return_action_contract() -> None:
-    html = _environment().get_template("dojo_error.html").render(
-        status=404,
-        title="This practice could not be found",
-        message="The session may have expired or the link may be incomplete.",
-        return_href="/",
-        return_label="Return to the dojo",
+    html = (
+        _environment()
+        .get_template("dojo_error.html")
+        .render(
+            status=404,
+            title="This practice could not be found",
+            message="The session may have expired or the link may be incomplete.",
+            return_href="/",
+            return_label="Return to the dojo",
+        )
     )
 
     assert "This practice could not be found" in html
@@ -150,8 +154,10 @@ def test_debrief_template_prominently_scores_a_manually_stopped_session() -> Non
         "evidence": ({"source": "metric", "ref": "queue_depth"},),
     }
 
-    html = _environment().get_template("dojo_debrief.html").render(
-        session={"stopped_early": True}, debrief=debrief
+    html = (
+        _environment()
+        .get_template("dojo_debrief.html")
+        .render(session={"stopped_early": True}, debrief=debrief)
     )
 
     assert "74<span>/100</span>" in html
@@ -194,31 +200,39 @@ def test_profile_templates_keep_proposal_execution_and_outcome_distinct() -> Non
             "turn_count": 2,
         },
     )
-    profile_html = _environment().get_template("dojo_profile.html").render(
-        profile=profile,
-        stats={"encountered": 1, "resolved": 1, "reviewed": 0, "active": 0},
-        cases=cases,
+    profile_html = (
+        _environment()
+        .get_template("dojo_profile.html")
+        .render(
+            profile=profile,
+            stats={"encountered": 1, "resolved": 1, "reviewed": 0, "active": 0},
+            cases=cases,
+        )
     )
-    case_html = _environment().get_template("dojo_case.html").render(
-        case={
-            **cases[0],
-            "role": "Incident commander",
-            "outcome_label": "Recovered",
-            "first_decision": "What do you do first?",
-            "constraints": ("Protect active checkouts.",),
-            "turns": (
-                {
-                    "response": "Pause new work, then inspect the leases.",
-                    "recognized_intents": ("Pause new work", "Inspect leases"),
-                    "action_label": "pause dispatch",
-                    "disposition_label": "accepted",
-                    "outcome_label": "Recovered",
-                    "strength": "Contained demand.",
-                    "risk": None,
-                },
-            ),
-            "debrief": None,
-        }
+    case_html = (
+        _environment()
+        .get_template("dojo_case.html")
+        .render(
+            case={
+                **cases[0],
+                "role": "Incident commander",
+                "outcome_label": "Recovered",
+                "first_decision": "What do you do first?",
+                "constraints": ("Protect active checkouts.",),
+                "turns": (
+                    {
+                        "response": "Pause new work, then inspect the leases.",
+                        "recognized_intents": ("Pause new work", "Inspect leases"),
+                        "action_label": "pause dispatch",
+                        "disposition_label": "accepted",
+                        "outcome_label": "Recovered",
+                        "strength": "Contained demand.",
+                        "risk": None,
+                    },
+                ),
+                "debrief": None,
+            }
+        )
     )
 
     assert "Problem portfolio" in profile_html

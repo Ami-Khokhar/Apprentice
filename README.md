@@ -219,6 +219,55 @@ Sessions and the Judgment Profile are stored locally in `apprentice.db`. Existin
 sessions automatically appear in **My practice**; no seed data or separate
 application service is required.
 
+> [!WARNING]
+> Apprentice is a local, single-user application. Keep it bound to
+> `127.0.0.1`. It is not hardened for LAN or internet exposure, reverse-proxy
+> deployment, shared machines, or untrusted users.
+
+## Data and privacy
+
+Apprentice is local-first, but model-assisted practice is not fully local.
+For scenario generation, facilitation, clarification, and debriefing, Apprentice
+invokes the locally authenticated Codex CLI. Relevant data—including the
+learner's professional field and work context, free-text responses, scenario
+state and evidence, and the model prompts that contain those values—is sent to
+OpenAI through that Codex session. The OpenAI account and product terms attached
+to the local Codex login govern that processing.
+
+On the learner's machine:
+
+- profile information, sessions, responses, scenario state, outcomes, and
+  debriefs are stored in `apprentice.db`;
+- SQLite storage is not encrypted by Apprentice, so operating-system users or
+  backups with access to the file may be able to read it; and
+- optional Observer traces are stored separately in
+  `.apprentice/traces.jsonl`, or at the path configured by
+  `APPRENTICE_TRACE_PATH`.
+
+Observer is a local inspection surface. It does not create a separate external
+data flow by itself, but content tracing can preserve full prompts, learner text,
+state, and outputs in the trace file. Langfuse is a separate, optional external
+data flow: when enabled, trace records are sent to the configured Langfuse
+service. With `APPRENTICE_TRACE_CONTENT=false`, the integration sends the
+metadata-only representation; with it set to `true`, it sends full trace
+content. Review the configured Langfuse provider's retention and privacy terms
+before enabling it.
+
+To delete local Apprentice data, stop the application and remove:
+
+```text
+apprentice.db
+apprentice.db-shm
+apprentice.db-wal
+.apprentice/
+```
+
+If the database path was customized through the application factory, or
+`APPRENTICE_TRACE_PATH` points elsewhere, delete those configured files instead.
+This removes local copies only. It does not delete data already processed or
+retained by OpenAI, Langfuse, operating-system backups, or another configured
+service; use the relevant provider's controls for those copies.
+
 ## Private Observer
 
 Observer is an optional, owner-only local dashboard for inspecting observable
@@ -296,8 +345,12 @@ network access nor model credentials.
 ```bash
 uv sync --locked
 uv run ruff check .
+uv run ruff format --check .
 uv run pytest -q
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## Routes
 
@@ -351,4 +404,6 @@ Available only when Observer is explicitly enabled:
 
 ## License
 
-No license has been declared yet.
+Licensed under the [Apache License 2.0](LICENSE). See
+[ASSET_PROVENANCE.md](ASSET_PROVENANCE.md) for the provenance of tracked design
+assets.

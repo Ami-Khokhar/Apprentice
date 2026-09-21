@@ -1,0 +1,20 @@
+# Render blueprint for the hosted, bring-your-own-key deployment.
+services:
+  - type: web
+    name: apprentice
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: APPRENTICE_MULTI_USER
+        value: "true"
+      - key: APPRENTICE_DB_PATH
+        value: /home/user/app/apprentice.db
+      # Set in the Render dashboard. Startup fails without it, by design.
+      - key: APPRENTICE_PRACTICE_MODEL
+        sync: false
+      # Set to the service hostname once Render assigns it, e.g. apprentice.onrender.com
+      - key: APPRENTICE_PUBLIC_HOST
+        sync: false

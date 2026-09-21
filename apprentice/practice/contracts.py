@@ -79,9 +79,7 @@ class ClarificationExchange(PracticeModel):
 
 
 class DecisionAssessment(PracticeModel):
-    disposition: Literal[
-        "accepted", "partially_effective", "needs_clarification", "unsafe"
-    ]
+    disposition: Literal["accepted", "partially_effective", "needs_clarification", "unsafe"]
     response_excerpt: str = Field(min_length=1, max_length=500)
     interpretation: str = Field(min_length=1, max_length=800)
     recognized_intents: tuple[str, ...] = Field(max_length=6)
@@ -154,9 +152,7 @@ class PortfolioTurn(PracticeModel):
     response: str = Field(min_length=1, max_length=8_000)
     action_kind: str | None = Field(default=None, max_length=80)
     recognized_intents: tuple[str, ...] = Field(max_length=6)
-    disposition: Literal[
-        "accepted", "partially_effective", "needs_clarification", "unsafe"
-    ]
+    disposition: Literal["accepted", "partially_effective", "needs_clarification", "unsafe"]
     interpretation: str = Field(min_length=1, max_length=800)
     strength: str = Field(min_length=1, max_length=500)
     risk: str | None = Field(max_length=500)

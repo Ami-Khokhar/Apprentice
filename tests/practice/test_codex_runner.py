@@ -78,11 +78,7 @@ def test_runner_uses_isolated_hardened_codex_command_and_stdin(
     assert {"--ephemeral", "--skip-git-repo-check", "--ignore-user-config"} <= set(command)
     assert command[command.index("--sandbox") + 1] == "read-only"
     assert command[command.index("--config") + 1] == 'model_reasoning_effort="medium"'
-    disabled = {
-        command[index + 1]
-        for index, value in enumerate(command)
-        if value == "--disable"
-    }
+    disabled = {command[index + 1] for index, value in enumerate(command) if value == "--disable"}
     assert disabled == {
         "shell_tool",
         "apps",
@@ -93,9 +89,7 @@ def test_runner_uses_isolated_hardened_codex_command_and_stdin(
         "image_generation",
     }
     config_values = {
-        command[index + 1]
-        for index, value in enumerate(command)
-        if value == "--config"
+        command[index + 1] for index, value in enumerate(command) if value == "--config"
     }
     assert 'web_search="disabled"' in config_values
     assert command[-1] == "-"

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
+import stat
 from contextlib import contextmanager
 from typing import Any
+
+import pytest
 
 from apprentice.observability import (
     REDACTED,
@@ -38,6 +42,8 @@ class FakeSDKManager:
     def __exit__(self, error_type: object, error: object, traceback: object) -> None:
         self.client.stack.pop()
         self.record["error_type"] = getattr(error_type, "__name__", None)
+        self.record["error"] = error
+        self.record["traceback"] = traceback
 
 
 class FakeSDKClient:
@@ -159,17 +165,20 @@ def test_local_trace_records_nested_content_and_rejection_reason(tmp_path) -> No
     store = LocalTraceStore(tmp_path / "traces.jsonl")
     tracer = LocalTracer(store, capture_content=True)
 
-    with tracer.operation(
-        "practice.start",
-        session_id="practice-123",
-        input={"profile": {"field": "Operations", "api_key": "private"}},
-    ), tracer.generation(
-        "dojo-scenario-generator",
-        model="gpt-5.6-terra",
-        output_schema="GeneratedScenarioSpec",
-        input={"prompt": "Create a situation"},
-        metadata={"attempt": 1},
-    ) as generation:
+    with (
+        tracer.operation(
+            "practice.start",
+            session_id="practice-123",
+            input={"profile": {"field": "Operations", "api_key": "private"}},
+        ),
+        tracer.generation(
+            "dojo-scenario-generator",
+            model="gpt-5.6-terra",
+            output_schema="GeneratedScenarioSpec",
+            input={"prompt": "Create a situation"},
+            metadata={"attempt": 1},
+        ) as generation,
+    ):
         generation.update(
             output={"title": "Queue pressure"},
             metadata={"result": "rejected", "rejection_reason": "near_duplicate"},
@@ -203,6 +212,81 @@ def test_local_trace_content_is_gated_and_writes_fail_open(tmp_path, caplog) -> 
     with caplog.at_level(logging.WARNING):
         blocked_store.append({"session_id": "safe"})
     assert "Local trace write failed" in caplog.text
+
+
+def test_metadata_only_local_trace_does_not_record_exception_message(tmp_path) -> None:
+    store = LocalTraceStore(tmp_path / "traces.jsonl")
+    tracer = LocalTracer(store, capture_content=False)
+
+    with (
+        pytest.raises(RuntimeError, match="private learner detail"),
+        tracer.operation("practice.respond", session_id="session", input={}),
+    ):
+        raise RuntimeError("private learner detail")
+
+    record = store.records("session")[0]
+    assert record["error"] == {
+        "type": "RuntimeError",
+        "content_recorded": False,
+    }
+    assert "private learner detail" not in str(record)
+
+
+def test_content_trace_redacts_secret_keyed_exception_message(tmp_path) -> None:
+    store = LocalTraceStore(tmp_path / "traces.jsonl")
+    tracer = LocalTracer(store, capture_content=True)
+
+    with (
+        pytest.raises(RuntimeError),
+        tracer.operation("practice.respond", session_id="session", input={}),
+    ):
+        raise RuntimeError('{"api_key":"private","detail":"visible"}')
+
+    assert store.records("session")[0]["error"] == {
+        "type": "RuntimeError",
+        "message": {"api_key": REDACTED, "detail": "visible"},
+    }
+
+
+def test_metadata_only_langfuse_does_not_receive_exception_or_traceback() -> None:
+    client = FakeSDKClient()
+    tracer = LangfuseTracer(client, FakePropagation(), capture_content=False)
+
+    with (
+        pytest.raises(RuntimeError, match="private learner detail"),
+        tracer.operation("practice.respond", session_id="session", input={}),
+    ):
+        raise RuntimeError("private learner detail")
+
+    record = client.records[0]
+    assert record["error_type"] is None
+    assert record["error"] is None
+    assert record["traceback"] is None
+    assert record["updates"] == [
+        {
+            "metadata": {
+                "error": {
+                    "type": "RuntimeError",
+                    "content_recorded": False,
+                }
+            }
+        }
+    ]
+    assert "private learner detail" not in str(record)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions are not portable to Windows")
+def test_local_trace_directory_and_file_are_private(tmp_path) -> None:
+    directory = tmp_path / ".apprentice"
+    directory.mkdir(mode=0o755)
+    path = directory / "traces.jsonl"
+    path.write_text("")
+    path.chmod(0o666)
+
+    LocalTraceStore(path).append({"session_id": "session"})
+
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_composite_keeps_local_trace_when_other_observer_update_fails(tmp_path) -> None:

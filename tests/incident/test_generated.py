@@ -103,9 +103,7 @@ def scenario_data() -> dict[str, object]:
                 "description": "Remove the duplicate partition and publish a validated forecast.",
                 "risk": "medium",
                 "prerequisites": ["inspect-pipeline"],
-                "metric_effects": [
-                    {"metric_id": "stockout-risk", "operation": "set", "value": 10}
-                ],
+                "metric_effects": [{"metric_id": "stockout-risk", "operation": "set", "value": 10}],
                 "reveals_artifacts": [],
                 "advances_minutes": 5,
             },
@@ -116,9 +114,7 @@ def scenario_data() -> dict[str, object]:
                 "at_minute": 7,
                 "title": "Partner requests confirmation",
                 "detail": "The partner asks whether the launch allocation is final.",
-                "metric_effects": [
-                    {"metric_id": "stockout-risk", "operation": "add", "value": 10}
-                ],
+                "metric_effects": [{"metric_id": "stockout-risk", "operation": "add", "value": 10}],
                 "reveals_artifacts": [],
                 "terminal": False,
             },
@@ -289,18 +285,12 @@ def test_runtime_restores_a_persisted_snapshot_and_continues() -> None:
     ("mutate", "message"),
     [
         (
-            lambda data: data["actions"][0].update(
-                {"prerequisites": ["correct-and-reforecast"]}
-            ),
+            lambda data: data["actions"][0].update({"prerequisites": ["correct-and-reforecast"]}),
             "acyclic",
         ),
         (
             lambda data: data["actions"][0].update(
-                {
-                    "metric_effects": [
-                        {"metric_id": "imaginary", "operation": "add", "value": 1}
-                    ]
-                }
+                {"metric_effects": [{"metric_id": "imaginary", "operation": "add", "value": 1}]}
             ),
             "unknown metric refs",
         ),
