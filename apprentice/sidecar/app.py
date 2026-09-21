@@ -35,7 +35,6 @@ from apprentice.practice.codex_runner import (
 from apprentice.practice.openai_runner import CURRENT_API_KEY, OpenAIStructuredRunner
 
 VISITOR_COOKIE = "apprentice_visitor"
-API_KEY_COOKIE = "apprentice_api_key"
 _VISITOR_ID = re.compile(r"\A[A-Za-z0-9_-]{16,64}\Z")
 _API_KEY = re.compile(r"\A[A-Za-z0-9_.\-]{20,200}\Z")
 
@@ -111,6 +110,7 @@ def build_app(
         **({"runner": OpenAIStructuredRunner(), "model": practice_model} if multi_user else {}),
     )
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    templates.env.globals["hosted"] = multi_user
 
     app = FastAPI(title="Apprentice")
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
@@ -151,7 +151,11 @@ def build_app(
             """Give each browser its own owner id, so practice stays private to it."""
             cookie = request.cookies.get(VISITOR_COOKIE, "")
             visitor = cookie if _VISITOR_ID.fullmatch(cookie) else secrets.token_urlsafe(24)
-            supplied = request.cookies.get(API_KEY_COOKIE, "")
+            supplied = request.headers.get("X-Apprentice-API-Key", "")
+            is_practice_form = request.method == "POST" and request.url.path.startswith("/practice")
+            if not supplied and is_practice_form:
+                form = await request.form()
+                supplied = str(form.get("api_key", ""))
             owner_token = CURRENT_OWNER_ID.set(visitor)
             key_token = CURRENT_API_KEY.set(supplied if _API_KEY.fullmatch(supplied) else "")
             try:
@@ -336,37 +340,8 @@ def build_app(
             "dojo_entry.html",
             {
                 "hosted": multi_user,
-                "has_key": bool(CURRENT_API_KEY.get()),
-                "key_rejected": request.query_params.get("key") == "rejected",
             },
         )
-
-    if multi_user:
-
-        @app.post("/key")
-        def remember_api_key(
-            request: Request,
-            api_key: Annotated[str, Form(max_length=200)] = "",
-        ) -> RedirectResponse:
-            """Hold the learner's key in a session cookie. It is never written to disk."""
-            candidate = api_key.strip()
-            if not _API_KEY.fullmatch(candidate):
-                return RedirectResponse(url="/?key=rejected", status_code=status.HTTP_303_SEE_OTHER)
-            response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-            response.set_cookie(
-                API_KEY_COOKIE,
-                candidate,
-                httponly=True,
-                samesite="strict",
-                secure=request.url.scheme == "https",
-            )
-            return response
-
-        @app.post("/key/forget")
-        def forget_api_key() -> RedirectResponse:
-            response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-            response.delete_cookie(API_KEY_COOKIE)
-            return response
 
     @app.get("/profile", response_class=HTMLResponse)
     def judgment_profile_page(request: Request):

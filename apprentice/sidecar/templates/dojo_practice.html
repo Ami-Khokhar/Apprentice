@@ -151,6 +151,7 @@
           class="dojo-form clarification-form"
           method="post"
           action="/practice/{{ session.id }}/clarifications"
+          {% if hosted | default(false) %}data-api-key-required{% endif %}
           data-loading-title="Checking the situation"
           data-loading-detail="Apprentice is answering only from facts already visible to you."
         >
@@ -175,6 +176,7 @@
       class="dojo-form decision-form"
       method="post"
       action="/practice/{{ session.id }}/responses"
+      {% if hosted | default(false) %}data-api-key-required{% endif %}
       data-loading-title="Considering your decision"
       data-loading-detail="The guide is tracing the consequences before the situation moves."
     >
@@ -204,6 +206,7 @@
         class="stop-simulation-form"
         method="post"
         action="/practice/{{ session.id }}/stop"
+        {% if hosted | default(false) %}data-api-key-required{% endif %}
         data-loading-title="Preparing your review"
         data-loading-detail="The guide is reviewing only the decisions you have made so far."
       >

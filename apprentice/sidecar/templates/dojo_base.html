@@ -12,6 +12,26 @@
   <header class="site-header">
     <a class="wordmark" href="/" aria-label="Apprentice home">Apprentice</a>
     <div class="header-actions">
+      {% if hosted | default(false) %}
+        <details class="api-key-sidebar" data-api-key-sidebar>
+          <summary>API key</summary>
+          <form class="api-key-form" data-api-key-form novalidate>
+            <label for="api-key">OpenAI API key</label>
+            <input
+              id="api-key"
+              name="api_key"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-..."
+              required
+            >
+            <p class="field-hint">Held only for this page. It is never saved to a cookie, database, file, or log.</p>
+            <button class="secondary-action" type="submit">Use for this page</button>
+            <p class="api-key-status" data-api-key-status role="status" aria-live="polite"></p>
+          </form>
+        </details>
+      {% endif %}
       <a class="profile-link" href="/profile">My practice</a>
       {% block progress %}{% endblock %}
     </div>

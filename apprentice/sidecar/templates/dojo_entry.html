@@ -10,44 +10,9 @@
       <p>Describe the field you work in—or the one you’re preparing to enter.</p>
     </header>
 
-{% if hosted | default(false) %}
-      <div class="key-panel">
-        {% if has_key | default(false) %}
-          <p class="field-hint">
-            Your OpenAI key is held for this browser session only. It is never stored on the server.
-          </p>
-          <form class="dojo-form key-form" method="post" action="/key/forget">
-            <button class="secondary-action" type="submit">Forget my key</button>
-          </form>
-        {% else %}
-          <form class="dojo-form key-form" method="post" action="/key">
-            <div class="field-group">
-              <label for="api-key">Your OpenAI API key</label>
-              <input
-                id="api-key"
-                name="api_key"
-                type="password"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="sk-..."
-                required
-              >
-              <p class="field-hint">
-                Practice runs on your own key and your own account. It is kept in a session
-                cookie for this browser, never written to disk, and never logged.
-                {% if key_rejected | default(false) %}
-                  <strong>That key did not look like an API key. Check it and try again.</strong>
-                {% endif %}
-              </p>
-            </div>
-            <button class="secondary-action" type="submit">Use this key</button>
-          </form>
-        {% endif %}
-      </div>
-{% endif %}
-
     <form
       class="dojo-form" method="post" action="/practice"
+      {% if hosted | default(false) %}data-api-key-required{% endif %}
       data-loading-title="Preparing your situation"
       data-loading-detail="The guide is shaping a challenge around your work."
     >

@@ -155,20 +155,51 @@ main {
   padding-block: clamp(1.5rem, 4.5vh, 3.5rem) 5rem;
 }
 
-.key-panel {
-  margin-block-end: 2.5rem;
-  padding: 1.5rem;
+.api-key-sidebar {
+  position: relative;
+}
+
+.api-key-sidebar summary {
+  color: var(--ink-muted);
+  font-size: 0.86rem;
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+  cursor: pointer;
+}
+
+.api-key-sidebar summary:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 4px;
+}
+
+.api-key-form {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 0.75rem);
+  right: 0;
+  display: grid;
+  width: min(22rem, calc(100vw - 2rem));
+  gap: 0.7rem;
+  padding: 1rem;
   border: 1px solid var(--hairline);
-  border-radius: 2px;
   background: var(--paper-deep);
+  box-shadow: 0 12px 28px rgb(28 26 23 / 14%);
 }
 
-.key-panel .key-form {
-  gap: 1rem;
+.api-key-form label {
+  font-size: 0.875rem;
+  font-weight: 650;
 }
 
-.key-panel .field-hint {
-  margin-block-start: 0.5rem;
+.api-key-form input {
+  min-height: 44px;
+}
+
+.api-key-status {
+  min-height: 1.25rem;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
 }
 
 .decision-view {
