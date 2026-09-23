@@ -35,3 +35,31 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t apprentice:ci .
+
+      - name: Start container
+        run: docker run -d --name apprentice -p 8000:8000 -e APPRENTICE_PRACTICE_MODEL=ci-placeholder apprentice:ci
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8000/ && exit 0
+            sleep 1
+          done
+          docker logs apprentice
+          exit 1
+
+      - name: Show container logs
+        if: always()
+        run: docker logs apprentice || true
