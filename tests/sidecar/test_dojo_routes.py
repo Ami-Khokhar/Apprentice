@@ -36,7 +36,7 @@ from apprentice.practice.codex_runner import (
     CodexTimeoutError,
 )
 from apprentice.practice.service import PracticeService
-from apprentice.sidecar.app import _practice_page_context, build_app, build_sidecar
+from apprentice.sidecar.app import _practice_page_context, build_app
 
 
 def _session(*, completed: bool = False, with_turn: bool = False) -> PracticeSession:
@@ -257,7 +257,6 @@ def test_app_defaults_dojo_to_local_codex_without_api_key(tmp_path, monkeypatch)
 
     assert isinstance(app.state.practice_service, PracticeService)
     assert isinstance(app.state.practice_service._runner, CodexStructuredRunner)
-    assert build_sidecar is build_app
 
 
 @pytest.mark.parametrize(
