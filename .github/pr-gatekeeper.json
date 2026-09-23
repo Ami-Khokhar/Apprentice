@@ -2,9 +2,10 @@
   "verify": "uv run ruff check . && uv run ruff format --check . && uv run pytest -q",
   "test_file_globs": [
     "tests/test_*.py",
-    "test/test_*.py"
+    "test/test_*.py",
+    "tests/**/test_*.py"
   ],
-  "test_command": "python3 -m unittest {files}",
+  "test_command": "uv run pytest -q {files}",
   "protected_paths": [
     ".github/",
     "AGENTS.md"
