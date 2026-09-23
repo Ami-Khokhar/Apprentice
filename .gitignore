@@ -15,10 +15,5 @@ build/
 *.egg-info/
 playwright-report/
 test-results/
-.playwright-mcp/
-.superpowers/sdd/
 .apprentice/
-
-# Separate local profile-art experiment; not part of Apprentice.
-Ami-Khokhar/
-profile-live.png
+.serena/
