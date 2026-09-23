@@ -1,5 +1,7 @@
 # Apprentice
 
+[![CI](https://github.com/Ami-Khokhar/Apprentice/actions/workflows/ci.yml/badge.svg)](https://github.com/Ami-Khokhar/Apprentice/actions/workflows/ci.yml)
+
 > A minimalist AI dojo for practicing professional judgment under pressure.
 
 Apprentice creates realistic, role-specific situations for the work someone does
@@ -8,6 +10,11 @@ in their own words, experiences deterministic consequences, and receives an
 evidence-grounded debrief.
 
 It is deliberate practice for decisions, not a course about recall.
+
+## Two ways to run
+
+- **Local** — sign in with the Codex CLI, single user, data in a local SQLite file.
+- **Hosted** — bring your own OpenAI API key, per-visitor history, deployed with Docker or Render.
 
 ## Why Apprentice exists
 
@@ -24,7 +31,9 @@ happen in real life. It is designed for:
 - practitioners taking on greater responsibility; and
 - experienced professionals who want to rehearse rare, consequential situations.
 
-The current product is a local, single-user experience for individual practice.
+Apprentice runs as a local, single-user experience for individual practice, or
+as a hosted, bring-your-own-key deployment where each visitor keeps their own
+history.
 
 ## The practice loop
 
@@ -134,7 +143,7 @@ GPT-5.6 Terra has four bounded responsibilities:
 
 Terra does **not** directly mutate the simulation.
 
-Each model operation invokes `codex exec` with:
+In local mode, each model operation invokes `codex exec` with:
 
 - the explicit `gpt-5.6-terra` model;
 - ephemeral execution;
@@ -145,6 +154,9 @@ Each model operation invokes `codex exec` with:
 
 Shell access, browser use, apps, plugins, multi-agent execution, image generation,
 and web search are disabled inside the model subprocess.
+
+In hosted mode, the same operations call the OpenAI Responses API with each
+visitor's own API key and the same structured output contracts.
 
 ## Architecture
 
@@ -220,9 +232,38 @@ sessions automatically appear in **My practice**; no seed data or separate
 application service is required.
 
 > [!WARNING]
-> Apprentice is a local, single-user application. Keep it bound to
-> `127.0.0.1`. It is not hardened for LAN or internet exposure, reverse-proxy
-> deployment, shared machines, or untrusted users.
+> Local mode is a single-user application. Keep it bound to `127.0.0.1`. It is
+> not hardened for LAN or internet exposure, reverse-proxy deployment, shared
+> machines, or untrusted users. For a shared deployment, use hosted mode and
+> read its limitations below.
+
+### Run the hosted mode
+
+Hosted mode turns on with `APPRENTICE_MULTI_USER=true`. Each visitor supplies
+their own OpenAI API key in the browser, and the model runner calls the OpenAI
+Responses API with structured output. `APPRENTICE_PRACTICE_MODEL` is required;
+startup fails without it.
+
+Build and run the container:
+
+```bash
+docker build -t apprentice .
+docker run -p 8000:8000 -e APPRENTICE_PRACTICE_MODEL=<model> apprentice
+```
+
+On Render, `render.yaml` is a blueprint for a free web service. Set
+`APPRENTICE_PRACTICE_MODEL` and `APPRENTICE_PUBLIC_HOST` in the dashboard.
+Render free web services have an ephemeral filesystem, so the SQLite file is
+lost on redeploy or restart.
+
+| Variable | Purpose |
+|---|---|
+| `APPRENTICE_MULTI_USER` | Turn on hosted mode. The Dockerfile sets it to `true`. |
+| `APPRENTICE_PRACTICE_MODEL` | Required in hosted mode; the model used for every operation. |
+| `APPRENTICE_PUBLIC_HOST` | Optional; when set, enforce the Host header allowlist for that hostname. |
+| `APPRENTICE_DB_PATH` | Database file path (default `apprentice.db`; the Dockerfile sets `/home/user/app/apprentice.db`). |
+
+Observer is a local-only tool and must not be enabled in hosted mode.
 
 ## Data and privacy
 
@@ -233,6 +274,16 @@ learner's professional field and work context, free-text responses, scenario
 state and evidence, and the model prompts that contain those values—is sent to
 OpenAI through that Codex session. The OpenAI account and product terms attached
 to the local Codex login govern that processing.
+
+In hosted mode, each visitor supplies their own OpenAI API key in the browser.
+The page keeps the key in memory only, not in browser storage, and adds it as a
+hidden form field on each practice submit. JSON API clients send it in the
+`X-Apprentice-API-Key` header. The server holds the key in a request-scoped
+context for that turn only and never stores it in the database. Each browser
+gets a random `apprentice_visitor` cookie that lasts 30 days and is HttpOnly.
+Sessions and the Judgment Profile are scoped to that visitor id, so losing the
+cookie means losing access to that history. Learner content goes to OpenAI under
+the visitor's own API key.
 
 On the learner's machine:
 
@@ -390,12 +441,18 @@ Available only when Observer is explicitly enabled:
 
 ## Current limitations
 
-- Apprentice is currently local and single-user.
-- Real practice requires a locally authenticated Codex account with access to
-  GPT-5.6 Terra.
-- Generation and assessment latency depend on the Codex session.
-- Sessions are durable, but concurrent submissions and multi-user isolation are
-  not yet hardened.
+- The local mode is single-user.
+- Real practice in local mode requires a locally authenticated Codex account with
+  access to GPT-5.6 Terra. Hosted mode requires each visitor's own OpenAI API
+  key.
+- Generation and assessment latency depend on the Codex session in local mode and
+  on the OpenAI API in hosted mode.
+- Only one model-backed turn runs per learner at a time. A second concurrent
+  submission is rejected with HTTP 429 instead of being queued.
+- Hosted mode has no rate limiting, abuse controls, or accounts. A visitor's
+  history is tied to one browser cookie.
+- The example Render blueprint uses a free web service with an ephemeral
+  filesystem, so hosted practice history does not survive a redeploy or restart.
 - The Judgment Profile represents simulated practice, not verified professional
   experience.
 - Novelty detection is deliberately bounded; after three rejected generations,
