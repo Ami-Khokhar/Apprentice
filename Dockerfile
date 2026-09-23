@@ -22,8 +22,10 @@ COPY --chown=user:user apprentice ./apprentice
 RUN uv sync --locked --extra hosted
 
 # Hosted mode: each visitor supplies their own API key and gets their own practice history.
+# The platform proxy terminates TLS, so trust its forwarded headers.
 ENV APPRENTICE_MULTI_USER=true \
-    APPRENTICE_DB_PATH=/home/user/app/apprentice.db
+    APPRENTICE_DB_PATH=/home/user/app/apprentice.db \
+    FORWARDED_ALLOW_IPS="*"
 
 # Set APPRENTICE_PRACTICE_MODEL in the Space settings. Startup fails without it.
 
