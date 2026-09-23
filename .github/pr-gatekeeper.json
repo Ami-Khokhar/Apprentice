@@ -1,0 +1,26 @@
+{
+  "verify": "uv run ruff check . && uv run ruff format --check . && uv run pytest -q",
+  "test_file_globs": [
+    "tests/test_*.py",
+    "test/test_*.py"
+  ],
+  "test_command": "python3 -m unittest {files}",
+  "protected_paths": [
+    ".github/",
+    "AGENTS.md"
+  ],
+  "max_changed_lines": 600,
+  "max_changed_files": 20,
+  "max_rounds": 3,
+  "run_allowlist": [
+    "python3 -m unittest",
+    "pytest",
+    "uv run pytest",
+    "npm test",
+    "uv run ruff"
+  ],
+  "reviewer_model": "deepseek-v4.1-flash",
+  "verifier_model": "glm-5.3-flash",
+  "merge_method": "squash",
+  "notify": ""
+}

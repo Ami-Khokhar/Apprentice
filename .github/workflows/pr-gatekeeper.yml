@@ -1,0 +1,86 @@
+# Caller workflow for pr-gatekeeper.
+#
+# Copy this file into a target repository as `.github/workflows/pr-gatekeeper.yml`,
+# then add the secret `OPENCODE_GO_API_KEY` (repo settings -> Secrets and
+# variables -> Actions). If pr-gatekeeper is private and this repo has no
+# access via the default token, also add `GATEKEEPER_READ_TOKEN`.
+#
+# The reusable workflow it calls lives at
+# Ami-Khokhar/pr-gatekeeper/.github/workflows/gatekeeper.yml@v1 and runs in
+# two isolated jobs: `gates` (deterministic checks on the PR code, no
+# secrets) and `review` (secrets, never executes PR code).
+#
+# Skip rule: PRs that cannot be reviewed are skipped entirely — drafts,
+# dependabot[bot] and renovate[bot] PRs, and fork PRs (head repo is not the
+# base repo). GitHub gives such runs no secrets, so a run would only fail.
+# workflow_dispatch always runs.
+#
+# The base sha is resolved here, by the caller: job `gates` must not read the
+# GitHub API, so it receives the sha as a plain workflow input.
+
+name: pr-gatekeeper
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to review"
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+  actions: write
+
+concurrency:
+  group: pr-gatekeeper-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  # Resolve the base sha for both triggers. Job `gates` must not hold a
+  # GH_TOKEN, so it gets the sha as a workflow input from this job.
+  resolve:
+    # Skip PRs that cannot be reviewed: drafts, dependabot/renovate PRs
+    # (no secrets for their runs) and fork PRs. workflow_dispatch always
+    # runs. When this job is skipped, `gatekeeper` is skipped with it
+    # (needs).
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+        !github.event.pull_request.draft
+        && github.event.pull_request.user.login != 'dependabot[bot]'
+        && github.event.pull_request.user.login != 'renovate[bot]'
+        && github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      base_sha: ${{ steps.base.outputs.base_sha }}
+    steps:
+      - id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr="${{ github.event.pull_request.number || inputs.pr }}"
+          base=$(gh pr view "$pr" --repo "${{ github.repository }}" --json baseRefOid -q .baseRefOid)
+          echo "base_sha=$base" >> "$GITHUB_OUTPUT"
+
+  gatekeeper:
+    # Runs only when `resolve` ran (skipped PRs never get this far).
+    if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
+    needs: resolve
+    uses: Ami-Khokhar/pr-gatekeeper/.github/workflows/gatekeeper.yml@v1
+    with:
+      pr: ${{ github.event.pull_request.number || inputs.pr }}
+      base_sha: ${{ needs.resolve.outputs.base_sha || github.event.pull_request.base.sha || '' }}
+      gatekeeper_ref: v1
+    secrets:
+      OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+      GATEKEEPER_READ_TOKEN: ${{ secrets.GATEKEEPER_READ_TOKEN }}
