@@ -612,10 +612,6 @@ def _practice_session_id_from_path(path: str) -> str | None:
     return None
 
 
-create_app = build_app
-build_sidecar = build_app
-
-
 def _optional_text(value: str | None) -> str | None:
     if value is None:
         return None
