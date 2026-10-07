@@ -90,6 +90,10 @@ def build_app(
         raise ValueError(
             "APPRENTICE_OBSERVER_TOKEN is required when APPRENTICE_OBSERVER_ENABLED=true"
         )
+    if multi_user and observer_enabled:
+        raise ValueError(
+            "APPRENTICE_OBSERVER_ENABLED is not supported when APPRENTICE_MULTI_USER=true"
+        )
     database = database or SQLiteDatabase(
         db_path or environment.get("APPRENTICE_DB_PATH") or "apprentice.db"
     )
