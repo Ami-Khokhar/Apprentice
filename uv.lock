@@ -65,7 +65,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "jinja2", specifier = ">=3.1" },
-    { name = "langfuse", marker = "extra == 'observability'", specifier = ">=4.7,<5" },
+    { name = "langfuse", marker = "extra == 'observability'", specifier = ">=4.15.4,<5" },
     { name = "openai", marker = "extra == 'hosted'", specifier = ">=1.68" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "python-multipart", specifier = ">=0.0.20" },
@@ -304,7 +304,7 @@ wheels = [
 
 [[package]]
 name = "langfuse"
-version = "4.14.1"
+version = "4.15.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -314,11 +314,12 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "packaging" },
     { name = "pydantic" },
+    { name = "typing-extensions" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/61/bb7fa00f5334a670c9aae1f053bc725654a0ca5435fa17d0cb103df8c978/langfuse-4.14.1.tar.gz", hash = "sha256:576641820ae79aeca71453c8eff3c8c35d53f7e41729c918f59eb81f7499faf9", size = 381977, upload-time = "2026-07-20T08:44:04.669Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/0c/ccb04968d47896e9eb7421b6e2e6e8cd510d8fa3e79337092dc734f25543/langfuse-4.15.4.tar.gz", hash = "sha256:b9a36194f4e968206d919313c24ea71c6ea68e21286370b01de752d20b26e7a3", size = 392296, upload-time = "2026-09-16T16:13:05.967Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/e4/6c305af16f1ce344271dd829383b7af586530cf60b55af1aaf274ca37ba9/langfuse-4.14.1-py3-none-any.whl", hash = "sha256:07d19f16338b8e21f8e5996b7e6c3ed150ee582fbaa6275ac9eeea297093f4be", size = 669448, upload-time = "2026-07-20T08:44:05.682Z" },
+    { url = "https://files.pythonhosted.org/packages/97/bd/8e0cadd69d0855646eda8d584ef4f38ca46cf271553af8ba7f93ae607626/langfuse-4.15.4-py3-none-any.whl", hash = "sha256:8e75c70b1522a722a11ab6c7d88e27534a5d0c3844a1a464ac5eb548b014e9c3", size = 706367, upload-time = "2026-09-16T16:13:07.294Z" },
 ]
 
 [[package]]
