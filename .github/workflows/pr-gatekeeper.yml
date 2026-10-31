@@ -80,7 +80,7 @@ jobs:
     with:
       pr: ${{ github.event.pull_request.number || inputs.pr }}
       base_sha: ${{ needs.resolve.outputs.base_sha || github.event.pull_request.base.sha || '' }}
-      gatekeeper_ref: v1
+      gatekeeper_ref: 3f46d6f04822e741c21bd86dc1c23d77226ec410
     secrets:
       OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
       GATEKEEPER_READ_TOKEN: ${{ secrets.GATEKEEPER_READ_TOKEN }}
