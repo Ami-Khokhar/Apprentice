@@ -107,8 +107,9 @@ you actually ran and that they passed.
 ## Hard limits
 
 - You must **not** edit files under `.github/` (workflow, `.github/pr-gatekeeper.json`)
-  or `AGENTS.md` in a PR. These paths are protected: touching them forces the
-  decision to `HUMAN`.
+  in a normal PR. These control paths remain protected and require `HUMAN` review.
+  AGENTS.md and ordinary documentation receive verification and independent content review unless
+  explicitly protected by the base configuration. Agent instructions remain security-sensitive.
 - After 3 rounds that end in `CHANGES`, the next review is `HUMAN`. Make each
   round count: fix everything in the first pass if you can.
 
