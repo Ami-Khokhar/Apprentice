@@ -6,7 +6,7 @@
 # access via the default token, also add `GATEKEEPER_READ_TOKEN`.
 #
 # The reusable workflow it calls lives at
-# Ami-Khokhar/pr-gatekeeper/.github/workflows/gatekeeper.yml@v1 and runs in
+# Ami-Khokhar/pr-gatekeeper/.github/workflows/gatekeeper.yml@65d78537856a5e513fac6b8659b79488e81c2b0f and runs in
 # two isolated jobs: `gates` (deterministic checks on the PR code, no
 # secrets) and `review` (secrets, never executes PR code).
 #
@@ -80,7 +80,7 @@ jobs:
     with:
       pr: ${{ github.event.pull_request.number || inputs.pr }}
       base_sha: ${{ needs.resolve.outputs.base_sha || github.event.pull_request.base.sha || '' }}
-      gatekeeper_ref: v1
+      gatekeeper_ref: 65d78537856a5e513fac6b8659b79488e81c2b0f
     secrets:
       OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
       GATEKEEPER_READ_TOKEN: ${{ secrets.GATEKEEPER_READ_TOKEN }}
